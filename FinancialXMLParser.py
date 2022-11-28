@@ -3,6 +3,8 @@ from urllib.parse import unquote
 from urllib.parse import urlparse
 from pathlib import Path
 from xsd_downloader import download_schema, XSD_DIR
+from collections import defaultdict
+import xlsxwriter
 
 
 class FinancialXMLParser:
@@ -16,6 +18,8 @@ class FinancialXMLParser:
         # Gets schema url from xml file
         self.schema_url = self.get_schema_url()
         self.download_xsd()
+        # get bilans
+        self.financial_balance_dict = self.find_bilans_and_parse()
 
     def remove_curly_braces(self, name):
         last_char = name.find('}')
@@ -92,12 +96,49 @@ class FinancialXMLParser:
         bilans_dict_xml = self.bilans_parsing(bilans_tag_elem, bilans_dict_xml)
         return bilans_dict_xml
 
+    def travel_dict_reccur(self, key, value, dict_to_fill, upper_key, level_0_key=None, level_1_key=None, level=0):
+        max_level = 2
+        if type(value) is dict:
+            for k, v in value.items():
+                if level == 0:
+                    level_1_key = key
+                dict_to_fill = self.travel_dict_reccur(k, v, dict_to_fill, key, level_0_key, level_1_key, level + 1)
+        else:
+            if level == 0:
+                if level_0_key not in dict_to_fill:
+                    dict_to_fill[level_0_key] = {}
+                dict_to_fill[level_0_key][key] = value
+            elif level == 1:
+                if level_1_key not in dict_to_fill[level_0_key]:
+                    dict_to_fill[level_0_key][level_1_key] = []
+                dict_to_fill[level_0_key][level_1_key].append((upper_key, key, value))
+            else:
+                dict_to_fill[level_0_key][level_1_key].append((upper_key, key, value))
+
+        return dict_to_fill
+
+    def get_assets(self):
+        level = 0
+        # aktywa = defaultdict(list)
+        aktywa = {}
+        for k, v in self.financial_balance_dict['Bilans']['Aktywa'].items():
+            aktywa = self.travel_dict_reccur(k, v, aktywa, 'Aktywa', 'Aktywa', None, level)
+
+        print(aktywa)
+
+    def generate_excel(self):
+        workbook = xlsxwriter.Workbook('Aktywa.xlsx')
+        worksheet = workbook.add_worksheet()
+
+        row = 0
+        col = 0
+
 
 if __name__ == "__main__":
     path = "./01_Coca-Cola_FS_2021_v6_30.06.2022.xml"
     path = "./P300_2020_20220214.xml"
     path = "./PEPSI-COLA GENERAL BOTTLERS POLAND Sp z oo SprFinJednostkaInnaWTysiacach 2022.07.28.xml"
     f_xml = FinancialXMLParser(path)
-    url = f_xml.get_schema_url()
-    # print(url)
-    print(f_xml.find_bilans_and_parse())
+    f_xml.get_assets()
+    # print(f_xml.financial_balance_dict)
+    # print(f_xml.map_xsd())
