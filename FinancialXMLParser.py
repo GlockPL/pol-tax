@@ -213,18 +213,17 @@ class FinancialXMLParser:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        usage="%(prog)s [OPTION] [FILE]...",
-        description="Print or check SHA1 (160-bit) checksums."
-    )
+    parser = argparse.ArgumentParser(description="Program do kowersji xmlów z KRSu na pliki excel")
     parser.add_argument(
-        "-f", "--file", type=str,help='Ścieżka do pliku xml'
+        "-f", "--file", type=str, help='Ścieżka do pliku xml'
     )
     args = parser.parse_args()
     path = "./01_Coca-Cola_FS_2021_v6_30.06.2022.xml"
     path = "./P300_2020_20220214.xml"
     path = "./PEPSI-COLA GENERAL BOTTLERS POLAND Sp z oo SprFinJednostkaInnaWTysiacach 2022.07.28.xml"
     path = args.file
-    f_xml = FinancialXMLParser(path)
-    f_xml.generate_excel('Aktywa.xlsx')
+
+    if path is not None:
+        f_xml = FinancialXMLParser(path)
+        f_xml.generate_excel('Aktywa.xlsx')
     # print(f_xml.financial_balance_dict)
