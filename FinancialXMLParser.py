@@ -25,6 +25,8 @@ class FinancialXMLParser:
         self.financial_balance_dict = self.find_bilans_and_parse()
         # get aktywa dict
         self.assets_dict = self.get_assets()
+        # get pasywa dict
+        self.passives_dict = self.get_equity_plus_liabilities()
 
     def remove_curly_braces(self, name):
         last_char = name.find('}')
@@ -132,6 +134,15 @@ class FinancialXMLParser:
         # print(recombined_aktywa)
         return recombined_aktywa
 
+    def get_equity_plus_liabilities(self):
+        level = 0
+        passives = {}
+        for k, v in self.financial_balance_dict['Bilans']['Pasywa'].items():
+            passives = self.travel_dict_reccur(k, v, passives, 'Pasywa', 'Pasywa', None, level)
+
+        recombined_passives = self.join_two_subtags("KwotaA", "KwotaB", "Pasywa", passives)
+        return recombined_passives
+
     # TODO: Change float to decimal
     def join_two_subtags(self, tag1, tag2, main_tag, data_dict):
         new_dict = {main_tag: {"Koszta": {}}}
@@ -166,45 +177,68 @@ class FinancialXMLParser:
 
         return max_list
 
-    def generate_excel(self, out_file_name):
+    def generate_passives_excel(self, out_file_name):
+        self.generate_excel(out_file_name, self.passives_dict, base_tag="Pasywa")
+
+    def generate_assets_excel(self, out_file_name):
+        self.generate_excel(out_file_name, self.assets_dict ,base_tag="Aktywa")
+
+    def generate_excel(self, out_file_name, main_dict, base_tag="Aktywa"):
         workbook = xlsxwriter.Workbook(out_file_name)
         worksheet = workbook.add_worksheet()
+        number_format = workbook.add_format({'num_format': '#,##0.00'})
         cell_format = workbook.add_format()
         cell_format.set_pattern(1)  # This is optional when using a solid fill.
-        cell_format.set_bg_color('#c2bebe')
+        cell_format.set_bg_color('#d7e4bc')
+        cell_format.set_border(1)
 
-        temp_dict = self.assets_dict['Aktywa'].copy()
+        cell_format_thicker = workbook.add_format()
+        cell_format_thicker.set_pattern(1)  # This is optional when using a solid fill.
+        cell_format_thicker.set_bg_color('#d7e4bc')
+        cell_format_thicker.set_border(1)
+        cell_format_thicker.set_bottom(2)
+
+        temp_dict = main_dict[base_tag].copy()
 
         row = 0
         col = 0
         worksheet.write(row, col + 1, self.xsd_dict[self.cost_tag_1])
         worksheet.write(row, col + 2, self.xsd_dict[self.cost_tag_2])
         row += 1
-        worksheet.write(row, col, self.xsd_dict["Aktywa"], cell_format)
-        worksheet.write_number(row, col + 1, temp_dict['Koszta'][self.cost_tag_1], cell_format)
-        worksheet.write_number(row, col + 2, temp_dict['Koszta'][self.cost_tag_2], cell_format)
+        worksheet.write(row, col, self.xsd_dict[base_tag], cell_format)
+        worksheet.write_number(row, col + 1, temp_dict['Koszta'][self.cost_tag_1], number_format)
+        worksheet.write_number(row, col + 2, temp_dict['Koszta'][self.cost_tag_2], number_format)
         row += 1
         del temp_dict['Koszta']
         col_max_size = [0, 0, 0]
         col_max_size = self.check_cols_max_size(col_max_size,
-                                                [self.xsd_dict["Aktywa"], self.xsd_dict[self.cost_tag_1],
+                                                [self.xsd_dict[base_tag], self.xsd_dict[self.cost_tag_1],
                                                  self.xsd_dict[self.cost_tag_2]])
-
+        border_count = 0
         for k, v in temp_dict.items():
             if type(v) == list:
-                worksheet.write(row, col, self.xsd_dict[k], cell_format)
-                worksheet.write_number(row, col + 1, v[0]['Koszta'][self.cost_tag_1], cell_format)
-                worksheet.write_number(row, col + 2, v[0]['Koszta'][self.cost_tag_2], cell_format)
+                prefix = k.replace(f"{base_tag}_", "")
+                worksheet.write(row, col, f"{prefix}. {self.xsd_dict[k]}", cell_format_thicker)
+                worksheet.write_number(row, col + 1, v[0]['Koszta'][self.cost_tag_1], number_format)
+                worksheet.write_number(row, col + 2, v[0]['Koszta'][self.cost_tag_2], number_format)
                 row += 1
+                border_count += 1
                 for d in v[1:]:
                     for list_k, list_v in d.items():
+                        if border_count % 3 == 0:
+                            formt = cell_format_thicker
+                        else:
+                            formt = cell_format
+
                         col_max_size = self.check_cols_max_size(col_max_size,
                                                                 [self.xsd_dict[list_k], list_v[self.cost_tag_1],
                                                                  list_v[self.cost_tag_2]])
-                        worksheet.write(row, col, self.xsd_dict[list_k])
-                        worksheet.write_number(row, col + 1, list_v[self.cost_tag_1])
-                        worksheet.write_number(row, col + 2, list_v[self.cost_tag_2])
+                        prefix = list_k.replace(f"{base_tag}_", "").replace("_", ".")
+                        worksheet.write(row, col, f"{prefix} {self.xsd_dict[list_k]}", formt)
+                        worksheet.write_number(row, col + 1, list_v[self.cost_tag_1], number_format)
+                        worksheet.write_number(row, col + 2, list_v[self.cost_tag_2], number_format)
                         row += 1
+                        border_count += 1
 
         for idx, col_siz in enumerate(col_max_size):
             worksheet.set_column(idx, idx, col_siz)
@@ -225,5 +259,9 @@ if __name__ == "__main__":
 
     if path is not None:
         f_xml = FinancialXMLParser(path)
-        f_xml.generate_excel('Aktywa.xlsx')
+        # f_xml.generate_excel('Aktywa.xlsx')
+        f_xml.generate_assets_excel('Aktywa.xlsx')
+        f_xml.generate_passives_excel('Pasywa.xlsx')
+        # passives = f_xml.get_equity_plus_liabilities()
+        # print(passives)
     # print(f_xml.financial_balance_dict)
