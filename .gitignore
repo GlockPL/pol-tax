@@ -3,8 +3,14 @@
 # Learn more about .gitignore:
 #     https://www.atlassian.com/git/tutorials/saving-changes/gitignore
 
+main.spec
 *.xsd
 *.xml
+
+
+*.xlsx
+cache/
+build/
 # Node artifact files
 node_modules/
 dist/

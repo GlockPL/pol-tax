@@ -2,9 +2,10 @@ import xml.etree.ElementTree as ET
 from urllib.parse import unquote
 from urllib.parse import urlparse
 from pathlib import Path
-from xsd_downloader import download_schema, XSD_DIR
 import xlsxwriter
 import argparse
+
+from XML.xsd_downloader import download_schema, XSD_DIR
 
 
 class FinancialXMLParser:
@@ -27,6 +28,10 @@ class FinancialXMLParser:
         self.assets_dict = self.get_assets()
         # get pasywa dict
         self.passives_dict = self.get_equity_plus_liabilities()
+
+    def list_all_root_tags(self):
+        for elem in self.root:
+            print(elem.tag)
 
     def remove_curly_braces(self, name):
         last_char = name.find('}')
