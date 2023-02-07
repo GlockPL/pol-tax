@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QApplication, QWidget
 from Widgets.MainWidget import MainWidget
-from Widgets.MainWindow import MainWindow
+from Widgets.MainWindow import MainGUI
 
 from Settings import Settings
 
@@ -11,7 +11,7 @@ if __name__ == "__main__":
     settings = Settings()
 
     # window = MainWidget()
-    window = MainWindow(app, settings)
+    window = MainGUI(app, settings)
     window.show()
 
     app.exec()

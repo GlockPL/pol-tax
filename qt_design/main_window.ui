@@ -15,7 +15,7 @@
   </property>
   <property name="windowIcon">
    <iconset>
-    <normaloff>../cropped-favicon-1-270x270.png</normaloff>../cropped-favicon-1-270x270.png</iconset>
+    <normaloff>../resources/cropped-favicon-1-270x270.png</normaloff>../resources/cropped-favicon-1-270x270.png</iconset>
   </property>
   <widget class="QWidget" name="widget">
    <layout class="QGridLayout" name="gridLayout">
@@ -27,7 +27,7 @@
       <item>
        <widget class="QTabWidget" name="tabWidget">
         <property name="currentIndex">
-         <number>1</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="structureTab">
          <attribute name="title">
@@ -41,78 +41,24 @@
               <string>Dokument</string>
              </property>
             </column>
-            <column>
-             <property name="text">
-              <string>Właściciel</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>Wykonujący</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>Sprawdzający</string>
-             </property>
-            </column>
-            <column>
-             <property name="text">
-              <string>Weryfikujący</string>
-             </property>
-            </column>
             <item>
              <property name="text">
-              <string>A. Dokumentacja Stała</string>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="text">
-              <string/>
+              <string>Wprowadznie</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>B. Karta identyfikacyjna</string>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-             <property name="text">
-              <string/>
+              <string>Aktywa</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>C. Planowanie</string>
+              <string>Pasywa</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>D. Kontrola Wewnętrzna</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>E. Obszary Badania</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>F. Zakończenie Badania</string>
+              <string>Załączone Pliki</string>
              </property>
             </item>
            </widget>
@@ -168,9 +114,9 @@
     <string>Otwórz XML</string>
    </property>
   </action>
-  <action name="actionClose">
+  <action name="actionSettings">
    <property name="text">
-    <string>Zamknij</string>
+    <string>Ustawienia</string>
    </property>
   </action>
   <action name="actionAbout">
@@ -178,9 +124,9 @@
     <string>O programie</string>
    </property>
   </action>
-  <action name="actionSettings">
+  <action name="actionClose">
    <property name="text">
-    <string>Ustawienia</string>
+    <string>Zamknij</string>
    </property>
   </action>
  </widget>

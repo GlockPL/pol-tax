@@ -5,6 +5,8 @@ from pathlib import Path
 import xlsxwriter
 import argparse
 import re
+import base64
+
 
 # My files Imports
 from XML.xsd_downloader import download_schema, XSD_DIR
@@ -36,6 +38,9 @@ class FinancialXMLParser:
         self.assets_dict = self.get_assets()
         # get pasywa dict
         self.passives_dict = self.get_equity_plus_liabilities()
+        # Embedde file extraction
+        self.embedded_files_dict = self.get_embedded_files()
+        self.extract_embedded_files()
 
     def list_all_root_tags(self):
         for elem in self.root:
@@ -150,6 +155,12 @@ class FinancialXMLParser:
 
         return dict_to_fill
 
+    def get_embedded_files(self):
+        embedded_tag_elem = self.recurse_search(self.root, 'DodatkoweInformacjeIObjasnienia')
+        embedded_dict_xml = {}
+        embedded_dict_xml = self.xml_tag_to_dict(embedded_tag_elem, embedded_dict_xml)
+        return embedded_dict_xml
+
     def get_assets(self):
         level = 0
         # aktywa = defaultdict(list)
@@ -158,7 +169,6 @@ class FinancialXMLParser:
             aktywa = self.travel_dict_reccur(k, v, aktywa, 'Aktywa', 'Aktywa', None, level)
 
         recombined_aktywa = self.join_two_subtags("KwotaA", "KwotaB", "Aktywa", aktywa)
-        # print(recombined_aktywa)
         return recombined_aktywa
 
     def get_introduction(self):
@@ -214,9 +224,9 @@ class FinancialXMLParser:
 
     def reccur_flatten(self, reccur_obj, upper_tag, return_dict: dict):
         if type(reccur_obj) == dict:
-            for k,v in reccur_obj.items():
+            for k, v in reccur_obj.items():
                 if type(v) == dict:
-                    return_dict[k] = ""
+                    return_dict[k] = "Header"
                     self.reccur_flatten(v, k, return_dict)
                 else:
                     return_dict[k] = v
@@ -237,23 +247,43 @@ class FinancialXMLParser:
         workbook = xlsxwriter.Workbook(out_file_name)
         worksheet = workbook.add_worksheet()
 
+        header_cell_format = workbook.add_format()
+        header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
+        header_cell_format.set_bg_color('#d7e4bc')
+        header_cell_format.set_border(1)
+
+        normal_cell_format = workbook.add_format()
+        normal_cell_format.set_pattern(1)  # This is optional when using a solid fill.
+        normal_cell_format.set_bg_color('#FEFEFE')
+
         flatten_introduction = self.flatten_dict(self.introduction_dict)
-        print(self.xsd_dict)
         row = 0
-        max_col_size = 0.0
+        col_max_size = [0, 0]
         for k, v in flatten_introduction.items():
             try:
-                col_s = self.col_size(self.xsd_dict[k])
-                max_col_size = col_s if col_s > max_col_size else max_col_size
-                worksheet.write(row, 0, self.xsd_dict[k])
+                row_name = self.xsd_dict[k]
             except KeyError:
-                col_s = self.col_size(k)
-                max_col_size = col_s if col_s > max_col_size else max_col_size
-                worksheet.write(row, 0, k)
-            worksheet.write(row, 1, v)
+                row_name = k
+
+            if row_name == "":
+                continue
+
+            col_max_size = self.check_cols_max_size(col_max_size, [row_name, v])
+
+            if v == "Header":
+                cell_format = header_cell_format
+                val = ""
+            else:
+                cell_format = normal_cell_format
+                val = v
+
+            worksheet.write(row, 0, row_name, cell_format)
+            worksheet.write(row, 1, val, cell_format)
+
             row += 1
 
-        worksheet.set_column(0, 0, max_col_size)
+        for idx, col_siz in enumerate(col_max_size):
+            worksheet.set_column(idx, idx, col_siz)
         workbook.close()
 
     def generate_passives_excel(self, out_file_name):
@@ -323,6 +353,22 @@ class FinancialXMLParser:
             worksheet.set_column(idx, idx, col_siz)
 
         workbook.close()
+
+    def extract_embedded_files(self):
+        files_dict = self.embedded_files_dict['DodatkoweInformacjeIObjasnieniaJednostkaInna']['DodatkoweInformacjeIObjasnienia']
+        files_list = []
+        for k, v in files_dict.items():
+            if k == "Plik":
+                files_list.append({'file_name': v['Nazwa'], 'content': v['Zawartosc']})
+
+        for elem in files_list:
+            file_path = Path(elem['file_name'])
+            concatenated_path = Path.joinpath(self.app_settings.get_extracted_dir(), file_path)
+            base64_bytes = elem['content'].encode('utf8')
+            message_bytes = base64.b64decode(base64_bytes)
+
+            with concatenated_path.open(mode='wb') as fh:
+                fh.write(message_bytes)
 
 
 if __name__ == "__main__":

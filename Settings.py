@@ -1,9 +1,10 @@
 import pickle
 from pathlib import Path
-
+from copy import deepcopy
 
 class Settings:
     _excel_dir = Path("./Excel")
+    _extracted_files_dir = Path("./Extracted")
     # TODO: Paradox of opening setting file that can change it's location after closing
     _settings_path = Path("./settings.pickle")
     _additional_keywords = {
@@ -13,7 +14,8 @@ class Settings:
         "Siedziba": "Siedziba",
         "P_1B": "",
         "P_1D": "NIP",
-        "P_1E": "KRS"
+        "P_1E": "KRS",
+        "KodPKD": "Kod PKD"
     }
 
     def __init__(self):
@@ -23,12 +25,16 @@ class Settings:
                 self.__dict__.update(settings_dict)
 
         self._excel_dir.mkdir(exist_ok=True, parents=True)
+        self._extracted_files_dir.mkdir(exist_ok=True, parents=True)
 
     def __enter__(self):
         return self
 
     def get_excel_dir(self):
         return str(self._excel_dir.absolute())
+
+    def get_extracted_dir(self):
+        return self._extracted_files_dir.absolute()
 
     def get_keywords(self):
         return self._additional_keywords
