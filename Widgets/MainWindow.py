@@ -6,9 +6,10 @@ from XML.FinancialXMLParser import FinancialXMLParser
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, app):
+    def __init__(self, app, app_settings):
         super().__init__()
         self.app = app
+        self.app_settings = app_settings
         self.setWindowTitle("Pol-Tax")
 
         self.xml_filepath = Path("./").resolve()
@@ -32,10 +33,10 @@ class MainWindow(QMainWindow):
                                                    "Image files (*.xml)")
         self.xml_filepath = Path(filepath[0])
         print(filepath)
-        f_xml = FinancialXMLParser(str(self.xml_filepath))
-        f_xml.lit_all_root_tags()
-        f_xml.generate_assets_excel('Aktywa.xlsx')
-        f_xml.generate_passives_excel('Pasywa.xlsx')
+        f_xml = FinancialXMLParser(str(self.xml_filepath), self.app_settings)
+        f_xml.list_all_root_tags()
+        f_xml.generate_assets_excel(f'{self.app_settings.get_excel_dir()}/Aktywa.xlsx')
+        f_xml.generate_passives_excel(f'{self.app_settings.get_excel_dir()}/Pasywa.xlsx')
 
     def get_last_file_path_dir(self):
         print(self.xml_filepath.resolve().parents[0])

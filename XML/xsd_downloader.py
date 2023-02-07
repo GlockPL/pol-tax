@@ -9,6 +9,7 @@ XSD Downloader
 
 import os
 import re
+import ctypes
 import urllib.request
 from urllib.parse import urljoin, urlparse
 
@@ -68,6 +69,8 @@ def save_file(url: str, text: str) -> None:
     # create directory structure
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
+        FILE_ATTRIBUTE_HIDDEN = 0x02
+        ret = ctypes.windll.kernel32.SetFileAttributesW(dir_name, FILE_ATTRIBUTE_HIDDEN)
 
     #     return last_path
     with open(XSD_DIR + "/" + filename_complete, "w", encoding="utf_8_sig") as f:

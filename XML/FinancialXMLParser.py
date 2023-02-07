@@ -4,12 +4,16 @@ from urllib.parse import urlparse
 from pathlib import Path
 import xlsxwriter
 import argparse
+import re
 
+# My files Imports
 from XML.xsd_downloader import download_schema, XSD_DIR
+from Settings import Settings
 
 
 class FinancialXMLParser:
-    def __init__(self, xml_path):
+    def __init__(self, xml_path: str, app_settings: Settings):
+        self.app_settings = app_settings
         self.cost_tag_1 = "KwotaA"
         self.cost_tag_2 = "KwotaB"
         self.xml_path = xml_path
@@ -22,6 +26,10 @@ class FinancialXMLParser:
         self.schema_url = self.get_schema_url()
         self.download_xsd()
         self.xsd_dict = self.map_xsd()
+        self.xsd_dict.update(app_settings.get_keywords())
+        # get introduction
+        self.introduction_dict = self.find_introduction()
+        self.generate_introduction_excel(f'{app_settings.get_excel_dir()}/Wprowadzenie.xlsx')
         # get bilans
         self.financial_balance_dict = self.find_bilans_and_parse()
         # get aktywa dict
@@ -63,7 +71,7 @@ class FinancialXMLParser:
                 for elem in child:
                     if "annotation" in elem.tag:
                         val = elem[0].text
-                        # print(f"{name}:{val}")
+                        val = re.sub('\[.*\]', '', val)
                         dict_obj[name] = val
             self.recur_annot(child, dict_obj)
 
@@ -85,28 +93,42 @@ class FinancialXMLParser:
             else:
                 self.recurse_search(elem, tag)
 
-    def bilans_parsing(self, bilans_tag, bilans_dict):
-        tag = bilans_tag.tag
+    def xml_tag_to_dict(self, xml_tag, xml_dict):
+        tag = xml_tag.tag
         lastChar = tag.find('}')
         if lastChar > 0:
             tag = tag[lastChar + 1:]
 
-        text = bilans_tag.text.strip() if bilans_tag.text is not None else ""
+        text = xml_tag.text.strip() if xml_tag.text is not None else ""
         if text == "":
-            bilans_dict[tag] = {}
+            xml_dict[tag] = {}
         else:
-            bilans_dict[tag] = text
+            xml_dict[tag] = text
 
-        for elem in bilans_tag:
-            bilans_dict[tag] = self.bilans_parsing(elem, bilans_dict[tag])
+        for elem in xml_tag:
+            xml_dict[tag] = self.xml_tag_to_dict(elem, xml_dict[tag])
 
-        return bilans_dict
+        return xml_dict
 
     def find_bilans_and_parse(self):
         bilans_tag_elem = self.recurse_search(self.root, 'Bilans')
         bilans_dict_xml = {}
-        bilans_dict_xml = self.bilans_parsing(bilans_tag_elem, bilans_dict_xml)
+        bilans_dict_xml = self.xml_tag_to_dict(bilans_tag_elem, bilans_dict_xml)
         return bilans_dict_xml
+
+    def find_introduction(self):
+        # WprowadzenieDoSprawozdaniaFinansowego
+        introduction_tag_elem = self.recurse_search(self.root, 'WprowadzenieDoSprawozdaniaFinansowego')
+        introduction_dict_xml = {}
+        introduction_dict_xml = self.xml_tag_to_dict(introduction_tag_elem, introduction_dict_xml)
+
+        ret_dict = {'WprowadzenieDoSprawozdaniaFinansowego': {}}
+        for k, v in introduction_dict_xml['WprowadzenieDoSprawozdaniaFinansowego'].items():
+            match = re.findall('P_([0-9]{1,3})', k)
+            if len(match) > 0 and int(match[0]) < 4:
+                ret_dict['WprowadzenieDoSprawozdaniaFinansowego'][k] = v
+
+        return ret_dict
 
     def travel_dict_reccur(self, key, value, dict_to_fill, upper_key, level_0_key=None, level_1_key=None, level=0):
         if type(value) is dict:
@@ -138,6 +160,14 @@ class FinancialXMLParser:
         recombined_aktywa = self.join_two_subtags("KwotaA", "KwotaB", "Aktywa", aktywa)
         # print(recombined_aktywa)
         return recombined_aktywa
+
+    def get_introduction(self):
+        level = 0
+        introduction = {}
+        for k, v in self.introduction_dict.items():
+            introduction = self.travel_dict_reccur(k, v, introduction, 'WprowadzenieDoSprawozdaniaFinansowego', 'WprowadzenieDoSprawozdaniaFinansowego', None, level)
+
+        return introduction
 
     def get_equity_plus_liabilities(self):
         level = 0
@@ -182,11 +212,55 @@ class FinancialXMLParser:
 
         return max_list
 
+    def reccur_flatten(self, reccur_obj, upper_tag, return_dict: dict):
+        if type(reccur_obj) == dict:
+            for k,v in reccur_obj.items():
+                if type(v) == dict:
+                    return_dict[k] = ""
+                    self.reccur_flatten(v, k, return_dict)
+                else:
+                    return_dict[k] = v
+        else:
+            return_dict[upper_tag] = return_dict
+
+        return return_dict
+
+    def flatten_dict(self, dict_to_flatten: dict):
+        out_dict = {}
+
+        for k, v in dict_to_flatten.items():
+            out_dict = self.reccur_flatten(v, k, out_dict)
+
+        return out_dict
+
+    def generate_introduction_excel(self, out_file_name):
+        workbook = xlsxwriter.Workbook(out_file_name)
+        worksheet = workbook.add_worksheet()
+
+        flatten_introduction = self.flatten_dict(self.introduction_dict)
+        print(self.xsd_dict)
+        row = 0
+        max_col_size = 0.0
+        for k, v in flatten_introduction.items():
+            try:
+                col_s = self.col_size(self.xsd_dict[k])
+                max_col_size = col_s if col_s > max_col_size else max_col_size
+                worksheet.write(row, 0, self.xsd_dict[k])
+            except KeyError:
+                col_s = self.col_size(k)
+                max_col_size = col_s if col_s > max_col_size else max_col_size
+                worksheet.write(row, 0, k)
+            worksheet.write(row, 1, v)
+            row += 1
+
+        worksheet.set_column(0, 0, max_col_size)
+        workbook.close()
+
     def generate_passives_excel(self, out_file_name):
         self.generate_excel(out_file_name, self.passives_dict, base_tag="Pasywa")
 
     def generate_assets_excel(self, out_file_name):
-        self.generate_excel(out_file_name, self.assets_dict ,base_tag="Aktywa")
+        self.generate_excel(out_file_name, self.assets_dict, base_tag="Aktywa")
 
     def generate_excel(self, out_file_name, main_dict, base_tag="Aktywa"):
         workbook = xlsxwriter.Workbook(out_file_name)

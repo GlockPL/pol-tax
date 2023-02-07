@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>900</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Pol-Tax</string>
+  </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>../cropped-favicon-1-270x270.png</normaloff>../cropped-favicon-1-270x270.png</iconset>
+  </property>
+  <widget class="QWidget" name="widget">
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="0" column="0">
+     <layout class="QVBoxLayout" name="verticalLayout">
+      <property name="sizeConstraint">
+       <enum>QLayout::SetMinimumSize</enum>
+      </property>
+      <item>
+       <widget class="QTabWidget" name="tabWidget">
+        <property name="currentIndex">
+         <number>1</number>
+        </property>
+        <widget class="QWidget" name="structureTab">
+         <attribute name="title">
+          <string>Struktura</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_2">
+          <item row="0" column="0">
+           <widget class="QTreeWidget" name="treeWidget">
+            <column>
+             <property name="text">
+              <string>Dokument</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Właściciel</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Wykonujący</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Sprawdzający</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Weryfikujący</string>
+             </property>
+            </column>
+            <item>
+             <property name="text">
+              <string>A. Dokumentacja Stała</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>B. Karta identyfikacyjna</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>C. Planowanie</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>D. Kontrola Wewnętrzna</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>E. Obszary Badania</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>F. Zakończenie Badania</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="tableTab">
+         <attribute name="title">
+          <string>Tabela</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_3">
+          <item row="0" column="0">
+           <widget class="QTableView" name="tableView"/>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>900</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuPlik">
+    <property name="title">
+     <string>Plik</string>
+    </property>
+    <addaction name="actionOpenXML"/>
+    <addaction name="actionClose"/>
+   </widget>
+   <widget class="QMenu" name="menuPomoc">
+    <property name="title">
+     <string>Pomoc</string>
+    </property>
+    <addaction name="actionSettings"/>
+    <addaction name="separator"/>
+    <addaction name="actionAbout"/>
+   </widget>
+   <addaction name="menuPlik"/>
+   <addaction name="menuPomoc"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionOpenXML">
+   <property name="text">
+    <string>Otwórz XML</string>
+   </property>
+  </action>
+  <action name="actionClose">
+   <property name="text">
+    <string>Zamknij</string>
+   </property>
+  </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>O programie</string>
+   </property>
+  </action>
+  <action name="actionSettings">
+   <property name="text">
+    <string>Ustawienia</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

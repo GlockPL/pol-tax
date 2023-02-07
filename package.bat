@@ -1,1 +1,1 @@
-pyinstaller main.py
+pyinstaller --onefile --windowed --icon=./resources/cropped-favicon-1-270x270.png main.py
