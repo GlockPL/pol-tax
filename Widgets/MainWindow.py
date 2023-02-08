@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QGridLayout, QHeaderVi
 from pathlib import Path
 
 from XML.FinancialXMLParser import FinancialXMLParser
+from Widgets.AboutDialog import AboutDialog
 
 
 class MainGUI(QMainWindow):
@@ -110,6 +111,7 @@ class MainGUI(QMainWindow):
         # =========================================================
         self.actionOpenXML.triggered.connect(self.xml_file_dialog_open)
         self.actionClose.triggered.connect(self.quit_app)
+        self.actionAbout.triggered.connect(self.show_about)
 
     def quit_app(self):
         self.app.quit()
@@ -127,6 +129,10 @@ class MainGUI(QMainWindow):
     def get_last_file_path_dir(self):
         print(self.xml_filepath.resolve().parents[0])
         return str(self.xml_filepath.resolve().parents[0])
+
+    def show_about(self):
+        about_dialog = AboutDialog(self)
+        about_dialog.exec()
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"Pol-Tax", None))
