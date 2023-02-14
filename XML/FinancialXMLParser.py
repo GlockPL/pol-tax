@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+import pandas as pd
 from urllib.parse import unquote
 from urllib.parse import urlparse
 from pathlib import Path
@@ -6,6 +7,8 @@ import xlsxwriter
 import argparse
 import re
 import base64
+
+from decimal import *
 
 
 # My files Imports
@@ -31,6 +34,7 @@ class FinancialXMLParser:
         self.xsd_dict.update(app_settings.get_keywords())
         # get introduction
         self.introduction_dict = self.find_introduction()
+        self.introduction_pd = pd.DataFrame(columns=['Type', 'Value', 'Value2'])
         self.generate_introduction_excel(f'{app_settings.get_excel_dir()}/Wprowadzenie.xlsx')
         # get bilans
         self.financial_balance_dict = self.find_bilans_and_parse()
@@ -41,6 +45,8 @@ class FinancialXMLParser:
         # Embedde file extraction
         self.embedded_files_dict = self.get_embedded_files()
         self.extract_embedded_files()
+        # Aktywa pd
+        self.assets_pd, self.assets_border_list = self.generate_assets_pd()
 
     def list_all_root_tags(self):
         for elem in self.root:
@@ -205,10 +211,10 @@ class FinancialXMLParser:
                         tag_to_write = tag if k != tag else "Koszta"
                         new_list.append({tag_to_write: temp_dict})
 
-                    temp_dict[cost_type] = float(cost)
+                    temp_dict[cost_type] = Decimal(cost)#float(cost)
                 new_dict[main_tag][k] = new_list
             elif float(v) is not None:
-                new_dict[main_tag]["Koszta"][k] = float(v)
+                new_dict[main_tag]["Koszta"][k] = Decimal(v)#float(v)
         return new_dict
 
     def col_size(self, string):
@@ -273,12 +279,15 @@ class FinancialXMLParser:
             if v == "Header":
                 cell_format = header_cell_format
                 val = ""
+                pd_row = [row_name, "", ""]
             else:
                 cell_format = normal_cell_format
                 val = v
+                pd_row = ["", row_name, val]
 
             worksheet.write(row, 0, row_name, cell_format)
             worksheet.write(row, 1, val, cell_format)
+            self.introduction_pd.loc[row] = pd_row
 
             row += 1
 
@@ -291,6 +300,47 @@ class FinancialXMLParser:
 
     def generate_assets_excel(self, out_file_name):
         self.generate_excel(out_file_name, self.assets_dict, base_tag="Aktywa")
+
+    def generate_assets_pd(self):
+        return self.generate_costs_pd(self.assets_dict, base_tag="Aktywa")
+
+    def generate_passive_pd(self):
+        return self.generate_costs_pd(self.passives_dict, base_tag="Pasywa")
+
+    def generate_costs_pd(self, main_dict, base_tag="Aktywa"):
+        border_this_list = []
+        temp_dict = main_dict[base_tag].copy()
+        df = pd.DataFrame(columns=["", self.xsd_dict[self.cost_tag_1], self.xsd_dict[self.cost_tag_2]])
+
+        row = 0
+        df.loc[row+1] = [self.xsd_dict[base_tag], temp_dict['Koszta'][self.cost_tag_1],
+                       temp_dict['Koszta'][self.cost_tag_2]]
+        border_this_list.append(0)
+
+        row += 1
+        del temp_dict['Koszta']
+
+        border_count = 0
+        for k, v in temp_dict.items():
+            if type(v) == list:
+                prefix = k.replace(f"{base_tag}_", "")
+                df.loc[row+1] = [f"{prefix}. {self.xsd_dict[k]}", v[0]['Koszta'][self.cost_tag_1],
+                               v[0]['Koszta'][self.cost_tag_2]]
+                border_this_list.append(1)
+                row += 1
+                for d in v[1:]:
+                    for list_k, list_v in d.items():
+                        if border_count % 3 == 0:
+                            border_this_list.append(1)
+                        else:
+                            border_this_list.append(0)
+
+                        prefix = list_k.replace(f"{base_tag}_", "").replace("_", ".")
+                        df.loc[row+1] = [f"{prefix} {self.xsd_dict[list_k]}", list_v[self.cost_tag_1],
+                                       list_v[self.cost_tag_2]]
+                        row += 1
+                        border_count += 1
+        return df, border_this_list
 
     def generate_excel(self, out_file_name, main_dict, base_tag="Aktywa"):
         workbook = xlsxwriter.Workbook(out_file_name)

@@ -1,3 +1,4 @@
+import pandas as pd
 from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
     QMetaObject, QObject, QPoint, QRect,
     QSize, QTime, QUrl, Qt)
@@ -15,6 +16,8 @@ from pathlib import Path
 
 from XML.FinancialXMLParser import FinancialXMLParser
 from Widgets.AboutDialog import AboutDialog
+from Widgets.ColorDelegate import ColorDelegate
+from Model.PandasModel import TabIntroductionModel, PandasModel
 
 
 class MainGUI(QMainWindow):
@@ -70,6 +73,14 @@ class MainGUI(QMainWindow):
         self.gridLayout_3 = QGridLayout(self.tableTab)
         self.gridLayout_3.setObjectName(u"gridLayout_3")
         self.tableView = QTableView(self.tableTab)
+
+        # data = pd.DataFrame(columns=['type', 'value'])
+        # data.loc[0] = ["Test", "Test"]
+        # print(data)
+        # self.model = PandasModel(data)
+        # self.tableView.setModel(self.model)
+
+
         self.tableView.setObjectName(u"tableView")
 
         self.gridLayout_3.addWidget(self.tableView, 0, 0, 1, 1)
@@ -122,9 +133,16 @@ class MainGUI(QMainWindow):
         self.xml_filepath = Path(filepath[0])
         print(filepath)
         f_xml = FinancialXMLParser(str(self.xml_filepath), self.app_settings)
-        f_xml.list_all_root_tags()
+        # f_xml.list_all_root_tags()
         f_xml.generate_assets_excel(f'{self.app_settings.get_excel_dir()}/Aktywa.xlsx')
         f_xml.generate_passives_excel(f'{self.app_settings.get_excel_dir()}/Pasywa.xlsx')
+
+        model = PandasModel(f_xml.assets_pd)
+        delegate = ColorDelegate(f_xml.assets_border_list)
+        self.tableView.setItemDelegate(delegate)
+        self.tableView.setModel(model)
+        horizontalHead = self.tableView.horizontalHeader()
+        horizontalHead.setSectionResizeMode(QHeaderView.ResizeToContents)
 
     def get_last_file_path_dir(self):
         print(self.xml_filepath.resolve().parents[0])
