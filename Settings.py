@@ -1,6 +1,7 @@
 import pickle
 from pathlib import Path
-from copy import deepcopy
+import atexit
+
 
 class Settings:
     _excel_dir = Path("./Excel")
@@ -17,13 +18,24 @@ class Settings:
         "P_1E": "KRS",
         "KodPKD": "Kod PKD"
     }
+    __instance = None
+
+    def __new__(cls):
+        if cls.__instance is None:
+            cls.__instance = super(Settings, cls).__new__(cls)
+            cls.__instance.__initialized = False
+        return cls.__instance
 
     def __init__(self):
+        if self.__initialized:
+            return
+        self.__initialized = True
+
         if self._settings_path.exists():
             with self._settings_path.open(mode='rb') as settings_file:
                 settings_dict = pickle.load(settings_file)
                 self.__dict__.update(settings_dict)
-
+        atexit.register(self.cleanup)
         self._excel_dir.mkdir(exist_ok=True, parents=True)
         self._extracted_files_dir.mkdir(exist_ok=True, parents=True)
 
@@ -39,6 +51,14 @@ class Settings:
     def get_keywords(self):
         return self._additional_keywords
 
+    def set_excel_dir(self, path):
+        self._excel_dir = Path(path)
+
+    def cleanup(self):
+        with self._settings_path.open(mode='wb') as output_file:
+            pickle.dump(self.__dict__, output_file)
+
     def __exit__(self, exc_type, exc_value, traceback):
+        print("Dumping Settings")
         with self._settings_path.open(mode='wb') as output_file:
             pickle.dump(self.__dict__, output_file)

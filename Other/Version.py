@@ -42,9 +42,13 @@ class Version(object):
 
         self.version_np[1] = minor_val
         self.version_np[2] = patch_val
+        self.version_np[0] = 0
 
     def up_major(self):
         self.version_np[0] += 1
+        self.version_np[1] += 0
+        self.version_np[2] += 0
+        self.version_np[3] += 0
 
     def __enter__(self):
         return self

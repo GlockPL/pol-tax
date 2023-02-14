@@ -1,7 +1,5 @@
-import sys
-
 import pandas as pd
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore
 from PySide6.QtCore import Qt, QModelIndex
 
 

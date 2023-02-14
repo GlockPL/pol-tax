@@ -35,7 +35,6 @@ class FinancialXMLParser:
         # get introduction
         self.introduction_dict = self.find_introduction()
         self.introduction_pd = pd.DataFrame(columns=['Type', 'Value', 'Value2'])
-        self.generate_introduction_excel(f'{app_settings.get_excel_dir()}/Wprowadzenie.xlsx')
         # get bilans
         self.financial_balance_dict = self.find_bilans_and_parse()
         # get aktywa dict
@@ -44,9 +43,10 @@ class FinancialXMLParser:
         self.passives_dict = self.get_equity_plus_liabilities()
         # Embedde file extraction
         self.embedded_files_dict = self.get_embedded_files()
-        self.extract_embedded_files()
         # Aktywa pd
         self.assets_pd, self.assets_border_list = self.generate_assets_pd()
+        # Pasywa pd
+        self.passives_pd, self.passives_border_list = self.generate_passives_pd()
 
     def list_all_root_tags(self):
         for elem in self.root:
@@ -304,6 +304,9 @@ class FinancialXMLParser:
     def generate_assets_pd(self):
         return self.generate_costs_pd(self.assets_dict, base_tag="Aktywa")
 
+    def generate_passives_pd(self):
+        return self.generate_costs_pd(self.passives_dict, base_tag="Pasywa")
+
     def generate_passive_pd(self):
         return self.generate_costs_pd(self.passives_dict, base_tag="Pasywa")
 
@@ -419,6 +422,8 @@ class FinancialXMLParser:
 
             with concatenated_path.open(mode='wb') as fh:
                 fh.write(message_bytes)
+
+        return concatenated_path
 
 
 if __name__ == "__main__":

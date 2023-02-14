@@ -1,5 +1,7 @@
 import re
 import numpy as np
+from Other.Version import Version
+
 
 def str_to_list(string):
     string = string.replace("(", "")
@@ -34,18 +36,30 @@ def build_up(type_name, file_content):
     return file_content
 
 
+def build_up_version(version: Version, type_name: str, file_content: str) -> str:
+    current_version_l = list(version.get_version())
+    ver_str = num_list_to_str(current_version_l)
+    new_ver = f'{type_name}={ver_str}'
+
+    file_content = file_content.replace(initial_ver, new_ver)
+
+    return file_content
+
+
 def save_version_file():
     with open('resources/version.npy', 'wb') as fl:
         np.save(fl, np.array([0, 0, 1, 0]))
 
+
 if __name__ == "__main__":
+    vers = Version()
     verinfo_file = 'file_version_info.txt'
     # Open a file: file
     with open(verinfo_file, mode='r') as file:
         verfile_content = file.read()
 
-    verfile_content = build_up('filevers', verfile_content)
-    verfile_content = build_up('prodvers', verfile_content)
+    verfile_content = build_up_version(vers, 'filevers', verfile_content)
+    verfile_content = build_up_version(vers, 'prodvers', verfile_content)
 
     with open(verinfo_file, 'w') as f:
         f.write(verfile_content)

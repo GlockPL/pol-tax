@@ -6,3 +6,4 @@ rm -r dist
 rm -r Extracted
 rm -r Excel
 rm ./qt_design/*.py
+rm settings.pickle
