@@ -18,6 +18,12 @@ def num_list_to_str(num_list):
     return string
 
 
+def num_list_to_str_dot(num_list):
+    str_list = [str(x) for x in num_list]
+    string = '.'.join(str_list)
+    string = f'{string[:len(string)]}'
+    return string
+
 def build_up(type_name, file_content):
     # filevers
     ver = re.findall(type_name + r'=(\([0-9]{1,4}, [0-9]{1,4}, [0-9]{1,4}, [0-9]{1,6}\))', file_content)
@@ -36,19 +42,30 @@ def build_up(type_name, file_content):
     return file_content
 
 
-def build_up_version(version: Version, type_name: str, file_content: str) -> str:
-    current_version_l = list(version.get_version())
-    ver_str = num_list_to_str(current_version_l)
+def build_up_version(ver_str: str, type_name: str, file_content: str) -> str:
+
     new_ver = f'{type_name}={ver_str}'
+
+    ver = re.findall(type_name + r'=(\([0-9]{1,4}, [0-9]{1,4}, [0-9]{1,4}, [0-9]{1,6}\))', file_content)
+    ver_tuple = ver[0]
+    initial_ver = f'{type_name}={ver_tuple}'
 
     file_content = file_content.replace(initial_ver, new_ver)
 
     return file_content
 
 
-def save_version_file():
-    with open('resources/version.npy', 'wb') as fl:
-        np.save(fl, np.array([0, 0, 1, 0]))
+def SringTable_version(ver_str: str, type_name: str, file_content: str) -> str:
+    new_ver = f'StringStruct(\'{type_name}\', \'{ver_str}\')'
+
+    regex_string = r'StringStruct\(\'' + type_name + r'\', \'([0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}\.{0,1}[0-9]{0,6})\'\)'
+    ver = re.findall(regex_string, file_content)
+    ver_tuple = ver[0]
+    initial_ver = f'StringStruct(\'{type_name}\', \'{ver_tuple}\')'
+
+    file_content = file_content.replace(initial_ver, new_ver)
+
+    return file_content
 
 
 if __name__ == "__main__":
@@ -58,12 +75,17 @@ if __name__ == "__main__":
     with open(verinfo_file, mode='r') as file:
         verfile_content = file.read()
 
-    verfile_content = build_up_version(vers, 'filevers', verfile_content)
-    verfile_content = build_up_version(vers, 'prodvers', verfile_content)
+    current_version_l = list(vers.up_build())
+    ver_str = num_list_to_str(current_version_l)
+    verfile_content = build_up_version(ver_str, 'filevers', verfile_content)
+    verfile_content = build_up_version(ver_str, 'prodvers', verfile_content)
+
+    ver_str = num_list_to_str_dot(current_version_l)
+    verfile_content = SringTable_version(ver_str, 'FileVersion', verfile_content)
+    verfile_content = SringTable_version(ver_str, 'ProductVersion', verfile_content)
 
     with open(verinfo_file, 'w') as f:
         f.write(verfile_content)
-    save_version_file()
 
 
 

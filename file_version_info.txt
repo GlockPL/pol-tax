@@ -31,10 +31,10 @@ VSVersionInfo(
         '040004b0',
         [StringStruct('CompanyName', 'Pol-Tax'),
         StringStruct('FileDescription', 'Pol-Tax'),
-        StringStruct('FileVersion', '0.0.1'),
+        StringStruct('FileVersion', '0.0.1.2'),
         StringStruct('LegalCopyright', '© Pol-Tax All rights reserved.'),
         StringStruct('ProductName', 'Pol-Tax'),
-        StringStruct('ProductVersion', '0.0.1')])
+        StringStruct('ProductVersion', '0.0.1.2')])
       ]), 
     VarFileInfo([VarStruct('Translation', [1024, 1200])])
   ]

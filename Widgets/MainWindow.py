@@ -151,10 +151,14 @@ class MainGUI(QMainWindow):
 
         f_xml.generate_assets_excel(aktywa_excel_path)
         f_xml.generate_passives_excel(pasywa_excel_path)
-        f_xml.generate_introduction_excel(introduction_excel_path)
+        # f_xml.generate_introduction_excel(introduction_excel_path)
+        f_xml.generate_introduction_excel_from_pd(introduction_excel_path)
         pdf_path = f_xml.extract_embedded_files()
 
-        self.add_elements_to_table(0, introduction_excel_path, {'dataframe': f_xml.introduction_pd, 'border_list': []})
+        self.add_elements_to_table(0, introduction_excel_path,
+                                   {'dataframe': f_xml.introduction_pd.rename(
+                                       columns={"Col1": "", "Col2": "", "Col3": ""}),
+                                    'border_list': f_xml.introduction_border_list})
         self.add_elements_to_table(1, aktywa_excel_path,
                                    {'dataframe': f_xml.assets_pd, 'border_list': f_xml.assets_border_list})
         self.add_elements_to_table(2, pasywa_excel_path,

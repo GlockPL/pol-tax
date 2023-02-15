@@ -34,7 +34,7 @@ class FinancialXMLParser:
         self.xsd_dict.update(app_settings.get_keywords())
         # get introduction
         self.introduction_dict = self.find_introduction()
-        self.introduction_pd = pd.DataFrame(columns=['Type', 'Value', 'Value2'])
+        self.introduction_pd, self.introduction_border_list = self.generate_introduction_pd()
         # get bilans
         self.financial_balance_dict = self.find_bilans_and_parse()
         # get aktywa dict
@@ -248,6 +248,75 @@ class FinancialXMLParser:
             out_dict = self.reccur_flatten(v, k, out_dict)
 
         return out_dict
+
+    def generate_introduction_pd(self):
+        df = pd.DataFrame(columns=["Col1", "Col2", "Col3"])
+        border_this_list = []
+        flatten_introduction = self.flatten_dict(self.introduction_dict)
+        row = 0
+        for k, v in flatten_introduction.items():
+            try:
+                row_name = self.xsd_dict[k]
+            except KeyError:
+                row_name = k
+
+            if row_name == "":
+                continue
+
+            if v == "Header":
+                val = ""
+                pd_row = [row_name, "", ""]
+                border_this_list.append(1)
+            else:
+                val = v
+                pd_row = ["", row_name, val]
+                border_this_list.append(0)
+
+            df.loc[row] = pd_row
+
+            row += 1
+
+        return df, border_this_list
+
+    def color_bg_row(self, s, border_list):
+        if border_list[s.index] == 1:
+            return ['background-color: #d7e4bc']
+
+        return ['']
+
+    def generate_introduction_excel_from_pd(self, out_file_name):
+        workbook = xlsxwriter.Workbook(out_file_name)
+        worksheet = workbook.add_worksheet()
+        workbook, header_cell_format, normal_cell_format = self.excel_style_format(workbook)
+
+        col_max_size = [0, 0]
+        i = 0
+        for index, row in self.introduction_pd.iterrows():
+            if self.introduction_border_list[i] == 1:
+                worksheet.write(i, 0, row['Col1'], header_cell_format)
+                col_max_size = self.check_cols_max_size(col_max_size, [row['Col1'], ""])
+            else:
+                worksheet.write(i, 0, row['Col2'], normal_cell_format)
+                worksheet.write(i, 1, row['Col3'], normal_cell_format)
+                col_max_size = self.check_cols_max_size(col_max_size, [row['Col2'], row['Col3']])
+            i += 1
+
+        for idx, col_siz in enumerate(col_max_size):
+            worksheet.set_column(idx, idx, col_siz)
+
+        workbook.close()
+
+    def excel_style_format(self, workbook):
+        header_cell_format = workbook.add_format()
+        header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
+        header_cell_format.set_bg_color('#d7e4bc')
+        header_cell_format.set_border(1)
+
+        normal_cell_format = workbook.add_format()
+        normal_cell_format.set_pattern(1)  # This is optional when using a solid fill.
+        normal_cell_format.set_bg_color('#FEFEFE')
+
+        return workbook, header_cell_format, normal_cell_format
 
     def generate_introduction_excel(self, out_file_name):
         workbook = xlsxwriter.Workbook(out_file_name)

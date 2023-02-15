@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+import atexit
 
 
 class Version(object):
@@ -11,9 +12,13 @@ class Version(object):
         if self.__initialized:
             return
         self.__initialized = True
-
-        with self._version_file.open(mode='rb') as np_file:
-            self.version_np = np.load(np_file)
+        atexit.register(self.cleanup)
+        if self._version_file.exists():
+            with self._version_file.open(mode='rb') as np_file:
+                self.version_np = np.load(np_file)
+        else:
+            self.version_np = np.zeros(4, dtype=np.int)
+            self.version_np[2] = 1
 
     def __new__(cls):
         if cls.__instance is None:
@@ -32,6 +37,7 @@ class Version(object):
 
     def up_build(self):
         self.version_np[3] += 1
+        return self.get_version()
 
     def up_patch(self):
         minor_val = self.version_np[1]
@@ -43,12 +49,14 @@ class Version(object):
         self.version_np[1] = minor_val
         self.version_np[2] = patch_val
         self.version_np[0] = 0
+        return self.get_version()
 
     def up_major(self):
         self.version_np[0] += 1
         self.version_np[1] += 0
         self.version_np[2] += 0
         self.version_np[3] += 0
+        return self.get_version()
 
     def __enter__(self):
         return self
@@ -57,4 +65,6 @@ class Version(object):
         with self._version_file.open(mode='wb') as output_file:
             np.save(output_file, self.version_np)
 
-        
+    def cleanup(self):
+        with self._version_file.open(mode='wb') as output_file:
+            np.save(output_file, self.version_np)
