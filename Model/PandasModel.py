@@ -38,6 +38,8 @@ class PandasModel(QtCore.QAbstractTableModel):
             return None
 
         if role == Qt.DisplayRole:
+            if self._dataframe.iloc[index.row(), index.column()] is None:
+                return ""
             return str(self._dataframe.iloc[index.row(), index.column()])
 
         return None

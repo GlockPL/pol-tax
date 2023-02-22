@@ -27,7 +27,7 @@
       <item>
        <widget class="QTabWidget" name="tabWidget">
         <property name="currentIndex">
-         <number>1</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="structureTab">
          <attribute name="title">
@@ -54,6 +54,21 @@
             <item>
              <property name="text">
               <string>Pasywa</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Rachunek Zysków i Strat</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Zestawienie zmian w kapitale własnym</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Rachunek przepływów pieniężnych</string>
              </property>
             </item>
             <item>

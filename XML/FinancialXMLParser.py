@@ -11,7 +11,7 @@ import base64
 from decimal import *
 
 
-# My files Imports
+# My files Import
 from XML.xsd_downloader import download_schema, XSD_DIR
 from Settings import Settings
 
@@ -47,6 +47,16 @@ class FinancialXMLParser:
         self.assets_pd, self.assets_border_list = self.generate_assets_pd()
         # Pasywa pd
         self.passives_pd, self.passives_border_list = self.generate_passives_pd()
+        # Rachunek zysków i start
+        self.gain_and_loses_dict, self.gain_and_loses_title_tag = self.find_gains_and_loses()
+        self.gain_and_loses_pd, self.gain_and_loses_border_list = self.generate_gains_and_loses_pd()
+        # Zestawienie zmian w kapitale
+        self.change_in_capital_dict = self.find_change_in_capital()
+        self.change_in_capital_pd, self.change_in_capital_border_list = self.generate_change_in_capital_pd()
+        # Rachunek Przepływów
+        self.capital_flow_dict, self.capital_flow_title_tag = self.find_capital_flow()
+        self.capital_flow_pd, self.capital_flow_border_list = self.generate_capital_flow_pd()
+        print('test')
 
     def list_all_root_tags(self):
         for elem in self.root:
@@ -102,7 +112,26 @@ class FinancialXMLParser:
             if tag in elem.tag:
                 return elem
             else:
-                self.recurse_search(elem, tag)
+                finded = self.recurse_search(elem, tag)
+                if finded is not None:
+                    return finded
+
+        return None
+
+    def search(self, root, tag):
+        for elem in root:
+            if tag in elem.tag:
+                return elem
+            else:
+                return self.r_search(elem, tag)
+        return None
+
+    def r_search(self, root, tag):
+        if tag in root.tag:
+            return root
+        else:
+            for elem in root:
+                return self.r_search(elem, tag)
 
     def xml_tag_to_dict(self, xml_tag, xml_dict):
         tag = xml_tag.tag
@@ -126,6 +155,70 @@ class FinancialXMLParser:
         bilans_dict_xml = {}
         bilans_dict_xml = self.xml_tag_to_dict(bilans_tag_elem, bilans_dict_xml)
         return bilans_dict_xml
+
+    def flatten_dict_with_numbers(self, d, main_tag):
+        new_dict = {}
+        for k, v in d[main_tag].items():
+            if type(v) == dict:
+                new_dict[k] = {}
+                new_dict = self.go_deeper(v, "KwotaA", "KwotaB", k, new_dict)
+            elif float(v) is not None:
+                new_dict[k] = Decimal(v)  # float(v)
+        return new_dict
+
+    def go_deeper(self, d, tag1, tag2, main_tag, new_d):
+        for k, v in d.items():
+            if k == tag1 or k == tag2:
+                new_d[main_tag][k] = Decimal(v)
+            else:
+                new_d[k] = {}
+                self.go_deeper(v, tag1, tag2, k, new_d)
+
+        return new_d
+
+    def find_gains_and_loses(self):
+        por_tag = self.recurse_search(self.root, 'RZiSPor')
+        kalk_tag = self.recurse_search(self.root, 'RZiSKalk')
+
+        if por_tag is not None:
+            main_elem = por_tag
+            main_tag = 'RZiSPor'
+        elif kalk_tag is not None:
+            main_elem = kalk_tag
+            main_tag = 'RZiSKalk'
+
+        gains_and_loses_dict_xml = {}
+        gains_and_loses_dict_xml = self.xml_tag_to_dict(main_elem, gains_and_loses_dict_xml)
+
+        gains_and_loses_dict = self.flatten_dict_with_numbers(gains_and_loses_dict_xml, main_tag)
+
+        return {'RZiS': gains_and_loses_dict}, main_tag
+
+    def find_change_in_capital(self):
+        main_tag = 'ZestZmianWKapitale'
+        main_elem = self.recurse_search(self.root, main_tag)
+
+        change_in_capital_dict_xml = {}
+        change_in_capital_dict_xml = self.xml_tag_to_dict(main_elem, change_in_capital_dict_xml)
+
+        change_in_capital_dict = self.flatten_dict_with_numbers(change_in_capital_dict_xml, main_tag)
+
+        return {main_tag: change_in_capital_dict}
+
+    def find_capital_flow(self):
+        main_tag = 'PrzeplywyPosr'
+        flow_posr_tag = self.recurse_search(self.root, main_tag)
+
+        capital_flow_dict_xml = {}
+        capital_flow_dict_xml = self.xml_tag_to_dict(flow_posr_tag, capital_flow_dict_xml)
+
+        capital_flow_dict = self.flatten_dict_with_numbers(capital_flow_dict_xml, main_tag)
+
+        for k, v in capital_flow_dict.items():
+            if not v:
+                capital_flow_dict[k] = {self.cost_tag_1: None, self.cost_tag_2: None}
+
+        return {'RachPrzeplywow': capital_flow_dict}, main_tag
 
     def find_introduction(self):
         # WprowadzenieDoSprawozdaniaFinansowego
@@ -194,7 +287,6 @@ class FinancialXMLParser:
         recombined_passives = self.join_two_subtags("KwotaA", "KwotaB", "Pasywa", passives)
         return recombined_passives
 
-    # TODO: Change float to decimal
     def join_two_subtags(self, tag1, tag2, main_tag, data_dict):
         new_dict = {main_tag: {"Koszta": {}}}
         for k, v in data_dict[main_tag].items():
@@ -213,12 +305,14 @@ class FinancialXMLParser:
 
                     temp_dict[cost_type] = Decimal(cost)#float(cost)
                 new_dict[main_tag][k] = new_list
+            # elif type(v) == dict:
+            #     new_dict[main_tag][k] = self.join_two_subtags("KwotaA", "KwotaB", k, data_dict[main_tag])
             elif float(v) is not None:
                 new_dict[main_tag]["Koszta"][k] = Decimal(v)#float(v)
         return new_dict
 
     def col_size(self, string):
-        return len(str(string)) - 1
+        return len(str(string)) + 5
 
     def check_cols_max_size(self, max_list, keys):
         for idx, val in enumerate(keys):
@@ -287,7 +381,7 @@ class FinancialXMLParser:
     def generate_introduction_excel_from_pd(self, out_file_name):
         workbook = xlsxwriter.Workbook(out_file_name)
         worksheet = workbook.add_worksheet()
-        workbook, header_cell_format, normal_cell_format = self.excel_style_format(workbook)
+        workbook, header_cell_format, normal_cell_format, number_format = self.excel_style_format(workbook)
 
         col_max_size = [0, 0]
         i = 0
@@ -307,16 +401,19 @@ class FinancialXMLParser:
         workbook.close()
 
     def excel_style_format(self, workbook):
+        number_format = workbook.add_format({'num_format': '#,##0.00'})
+        normal_cell_format = workbook.add_format()
+        normal_cell_format.set_pattern(1)  # This is optional when using a solid fill.
+        normal_cell_format.set_bg_color('#d7e4bc')
+        normal_cell_format.set_border(1)
+
         header_cell_format = workbook.add_format()
         header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
         header_cell_format.set_bg_color('#d7e4bc')
         header_cell_format.set_border(1)
+        header_cell_format.set_bottom(2)
 
-        normal_cell_format = workbook.add_format()
-        normal_cell_format.set_pattern(1)  # This is optional when using a solid fill.
-        normal_cell_format.set_bg_color('#FEFEFE')
-
-        return workbook, header_cell_format, normal_cell_format
+        return workbook, header_cell_format, normal_cell_format, number_format
 
     def generate_introduction_excel(self, out_file_name):
         workbook = xlsxwriter.Workbook(out_file_name)
@@ -379,14 +476,92 @@ class FinancialXMLParser:
     def generate_passive_pd(self):
         return self.generate_costs_pd(self.passives_dict, base_tag="Pasywa")
 
-    def generate_costs_pd(self, main_dict, base_tag="Aktywa"):
+    def generate_gains_and_loses_pd(self):
+        return self.generate_pd_from_number_dict(self.gain_and_loses_dict, 'RZiS')
+
+    def generate_change_in_capital_pd(self):
+        return self.generate_pd_from_number_dict(self.change_in_capital_dict, 'ZestZmianWKapitale')
+
+    def generate_capital_flow_pd(self):
+        return self.generate_pd_from_number_dict(self.capital_flow_dict, 'RachPrzeplywow')
+
+    def generate_pd_from_number_dict(self, d, main_key):
+        border_this_list = []
+        df = pd.DataFrame(columns=[self.xsd_dict[main_key], self.xsd_dict[self.cost_tag_1], self.xsd_dict[self.cost_tag_2]])
+
+        row = 1
+        for k, v in d[main_key].items():
+            if re.match(r'^[A-Z]$', k):
+                border_this_list.append(1)
+            else:
+                border_this_list.append(0)
+
+            df.loc[row] = [f"{k.replace('_', '.')}. {self.xsd_dict[k]}", v[self.cost_tag_1], v[self.cost_tag_2]]
+            row += 1
+
+        return df, border_this_list
+
+    def generate_gains_and_loses_excel(self, out_file_name):
+        self.generate_excel_from_numbers_pd(self.gain_and_loses_pd, self.gain_and_loses_border_list, out_file_name,
+                                            title_row=self.gain_and_loses_title_tag)
+
+    def generate_change_in_capital_excel(self, out_file_name):
+        self.generate_excel_from_numbers_pd(self.change_in_capital_pd, self.change_in_capital_border_list,
+                                              out_file_name)
+
+    def generate_capital_flow_excel(self, out_file_name):
+        self.generate_excel_from_numbers_pd(self.capital_flow_pd, self.capital_flow_border_list, out_file_name,
+                                            title_row=self.capital_flow_title_tag)
+
+    def generate_excel_from_numbers_pd(self, df, df_border_list, out_file_name, title_row=None):
+        workbook = xlsxwriter.Workbook(out_file_name)
+        worksheet = workbook.add_worksheet()
+        workbook, header_cell_format, normal_cell_format, number_format = self.excel_style_format(workbook)
+
+        cols = df.columns
+
+        for idx, col in enumerate(cols):
+            worksheet.write(0, idx, col, header_cell_format)
+        i = 1
+        if title_row is not None:
+            worksheet.write(1, 0, "", header_cell_format)
+            worksheet.write(1, 1, "", header_cell_format)
+            worksheet.write(1, 2, "", header_cell_format)
+            worksheet.merge_range(f'A2:C2', self.xsd_dict[title_row], header_cell_format)
+            i += 1
+
+        col_max_size = [0, 0, 0]
+        for index, row in df.iterrows():
+            if df_border_list[i-2] == 1:
+                cell_format = header_cell_format
+            else:
+                cell_format = normal_cell_format
+
+            if row[cols[1]] is None or row[cols[2]] is None:
+                worksheet.write(i, 0, "", cell_format)
+                worksheet.write(i, 1, "", cell_format)
+                worksheet.write(i, 2, "", cell_format)
+                worksheet.merge_range(i, 0, i, 2, row[cols[0]], header_cell_format)
+            else:
+                worksheet.write(i, 0, row[cols[0]], cell_format)
+                worksheet.write_number(i, 1, row[cols[1]], number_format)
+                worksheet.write_number(i, 2, row[cols[2]], number_format)
+                col_max_size = self.check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
+            i += 1
+
+        for idx, col_siz in enumerate(col_max_size):
+            worksheet.set_column(idx, idx, col_siz)
+
+        workbook.close()
+
+    def generate_costs_pd(self, main_dict, base_tag="Aktywa", column_tag="Koszta"):
         border_this_list = []
         temp_dict = main_dict[base_tag].copy()
         df = pd.DataFrame(columns=["", self.xsd_dict[self.cost_tag_1], self.xsd_dict[self.cost_tag_2]])
 
         row = 0
-        df.loc[row+1] = [self.xsd_dict[base_tag], temp_dict['Koszta'][self.cost_tag_1],
-                       temp_dict['Koszta'][self.cost_tag_2]]
+        df.loc[row+1] = [self.xsd_dict[base_tag], temp_dict[column_tag][self.cost_tag_1],
+                       temp_dict[column_tag][self.cost_tag_2]]
         border_this_list.append(0)
 
         row += 1
