@@ -12,6 +12,8 @@ class Settings:
     # TODO: Paradox of opening setting file that can change it's location after closing
     _settings_path = Path("./settings.pickle")
     _additional_keywords = {
+        "KwotaA": "Kwota na dzień kończący bieżący rok obrotowy",
+        "KwotaB": "Kwota na dzień kończący poprzedni rok obrotowy",
         "DataOd": "Okres od",
         "DataDo": "Okres do",
         "NazwaFirmy": "Nazwa Firmy",
@@ -53,6 +55,9 @@ class Settings:
 
     def get_keywords(self):
         return self._additional_keywords
+
+    def set_keywords(self, d):
+        self._additional_keywords = d
 
     def set_excel_dir(self, path):
         self._excel_dir = Path(path)

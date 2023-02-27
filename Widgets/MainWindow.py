@@ -15,7 +15,9 @@ from PySide6.QtWidgets import (QToolBar, QFileDialog, QGridLayout, QHeaderView, 
 from PySide6.QtSvg import QSvgRenderer
 
 import os
+import subprocess
 import hashlib
+import logging
 from pathlib import Path
 
 from XML.FinancialXMLParser import FinancialXMLParser, FinancialXMLRulesCheck
@@ -23,6 +25,9 @@ from Widgets.AboutDialog import AboutDialog
 from Widgets.ColorDelegate import ColorDelegate
 from Widgets.SettingsDialog import SettingsDialog
 from Model.PandasModel import PandasModel
+from Settings import loging_level
+
+logging.basicConfig(level=loging_level)
 
 
 class MainGUI(QMainWindow):
@@ -31,7 +36,7 @@ class MainGUI(QMainWindow):
         self.app = app
         self.app_settings = app_settings
 
-        self.xml_filepath = Path("./").resolve()
+        self.xml_filepath = Path('./').resolve()
         self.resources_filepath = Path("./resources/").resolve()
         MainWindow = self
 
@@ -140,6 +145,7 @@ class MainGUI(QMainWindow):
         self.actionAbout.triggered.connect(self.show_about)
         self.actionSettings.triggered.connect(self.show_settings)
         self.actionSumowanie.triggered.connect(self.xml_summation_check)
+        self.treeWidget.itemClicked.connect(self.handle_item_clicked)
 
         #Icons
         excel_icon_path = self.resources_filepath.joinpath("excel_icon.jpg")
@@ -155,15 +161,11 @@ class MainGUI(QMainWindow):
     def show_settings(self):
         dialog = SettingsDialog()
         if dialog.exec() == QDialog.Accepted:
-            print("Zamknięto ustawienia")
+            self.setup_excels()
+            logging.debug("Zamknięto ustawienia")
 
-    def xml_file_dialog_open(self):
-        path_picked = QFileDialog.getOpenFileName(self, 'Wybierz plik XML', self.get_last_file_path_dir(),
-                                                   "Pliki xml (*.xml)")
-        filepath = path_picked[0]
-        if filepath != '':
-            self.xml_filepath = Path(filepath)
-            print(filepath)
+    def setup_excels(self):
+        if self.xml_filepath.suffix == '.xml':
             self.f_xml = FinancialXMLParser(str(self.xml_filepath), self.app_settings)
 
             hash = self.get_hash_path(self.xml_filepath)
@@ -188,11 +190,12 @@ class MainGUI(QMainWindow):
             self.add_elements_to_table(0, introduction_excel_path,
                                        {'dataframe': self.f_xml.introduction_pd.rename(
                                            columns={"Col1": "", "Col2": "", "Col3": ""}),
-                                        'border_list': self.f_xml.introduction_border_list})
+                                           'border_list': self.f_xml.introduction_border_list})
             self.add_elements_to_table(1, aktywa_excel_path,
                                        {'dataframe': self.f_xml.assets_pd, 'border_list': self.f_xml.assets_border_list})
             self.add_elements_to_table(2, pasywa_excel_path,
-                                       {'dataframe': self.f_xml.passives_pd, 'border_list': self.f_xml.passives_border_list})
+                                       {'dataframe': self.f_xml.passives_pd,
+                                        'border_list': self.f_xml.passives_border_list})
             self.add_elements_to_table(3, gains_and_loses_excel_path,
                                        {'dataframe': self.f_xml.gain_and_loses_pd,
                                         'border_list': self.f_xml.gain_and_loses_border_list})
@@ -203,6 +206,19 @@ class MainGUI(QMainWindow):
                                        {'dataframe': self.f_xml.capital_flow_pd,
                                         'border_list': self.f_xml.capital_flow_border_list})
             self.add_pdf_element_to_table(6, pdf_path)
+        else:
+            logging.debug("Path to xml not setup!")
+
+    def xml_file_dialog_open(self):
+        path_picked = QFileDialog.getOpenFileName(self, 'Wybierz plik XML', self.get_last_file_path_dir(),
+                                                   "Pliki xml (*.xml)")
+        filepath = path_picked[0]
+        if filepath != '':
+            self.statusbar.showMessage("Przetwarzanie pliku XML")
+            self.xml_filepath = Path(filepath)
+            logging.debug(filepath)
+            self.setup_excels()
+            self.statusbar.clearMessage()
 
     def set_table_content(self, dataframe, border_list):
         model = PandasModel(dataframe)
@@ -213,7 +229,7 @@ class MainGUI(QMainWindow):
         horizontalHead.setSectionResizeMode(QHeaderView.ResizeToContents)
 
     def get_last_file_path_dir(self):
-        print(self.xml_filepath.resolve().parents[0])
+        logging.debug(self.xml_filepath.resolve().parents[0])
         return str(self.xml_filepath.resolve().parents[0])
 
     def clear_second_level_tree(self):
@@ -243,20 +259,16 @@ class MainGUI(QMainWindow):
         excel_item.setData(0, Qt.UserRole, str(excel_path))
         excel_item.setIcon(0, self.excel_icon)
 
-        self.treeWidget.itemClicked.connect(self.handle_item_clicked)
-
     def add_pdf_element_to_table(self, item_idx, pdf_path):
         item = self.treeWidget.topLevelItem(item_idx)
 
         # Create the "table" item and add it to the "Wprowadzenie" item
         pdf_item = QTreeWidgetItem(item)
         pdf_item.setText(0, "PDF")
-        pdf_item.setIcon(0, self.spreadsheet_icon)
-
         pdf_item.setData(0, Qt.UserRole, str(pdf_path))
         pdf_item.setIcon(0, self.pdf_icon)
 
-        self.treeWidget.itemClicked.connect(self.handle_item_clicked)
+        # self.treeWidget.itemClicked.connect(self.pdf_item_clicked)
 
     def show_about(self):
         about_dialog = AboutDialog(self)
@@ -268,14 +280,16 @@ class MainGUI(QMainWindow):
             objects_dict = item.data(0, Qt.UserRole)
             self.set_table_content(objects_dict["dataframe"], objects_dict["border_list"])
             self.tabWidget.setCurrentIndex(1)
+            logging.debug(f"Opening table")
             # Do something with the table view data, such as show a table view widget
-
         elif item.text(0) == "Excel":
             excel_path = item.data(0, Qt.UserRole)
+            logging.debug(f"Opening Excel {excel_path}")
             os.startfile(excel_path)
-
         elif item.text(0) == "PDF":
             pdf_path = item.data(0, Qt.UserRole)
+            logging.debug(f"Opening {pdf_path}")
+            # subprocess.run(r'"{}"'.format(pdf_path), shell=True)
             os.startfile(pdf_path)
 
     def xml_summation_check(self):
@@ -283,7 +297,7 @@ class MainGUI(QMainWindow):
             f_xml_rules = FinancialXMLRulesCheck(self.f_xml)
             f_xml_rules.to_excel(f'{self.app_settings.get_excel_dir()}/Aktywa_check.xlsx')
         else:
-            print("Brak excela!")
+            logging.debug("Brak excela!")
 
     def get_hash_path(self, path: Path):
         sha = hashlib.sha256()
