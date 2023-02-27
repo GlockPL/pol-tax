@@ -1,0 +1,14 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/icons">
+    <file>./baseline_picture_as_pdf_black_48dp.png</file>
+    <file>./baseline_settings_black_48dp.png</file>
+    <file>./baseline_summarize_black_48dp.png</file>
+    <file>./baseline_table_view_black_48dp.png</file>
+    <file>./cropped-favicon-1-135x135.png</file>
+    <file>./cropped-favicon-1-270x270.png</file>
+    <file>./cropped-favicon-1-540x540.jpg</file>
+    <file>./excel_icon.jpg</file>
+    <file>./spreadsheet-icon.jpg</file>
+    <file>./summarize_black_48dp.svg</file>
+</qresource>
+</RCC>

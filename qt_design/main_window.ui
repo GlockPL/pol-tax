@@ -124,6 +124,22 @@
    <addaction name="menuPomoc"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <property name="toolButtonStyle">
+    <enum>Qt::ToolButtonTextBesideIcon</enum>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+   <addaction name="actionSumowanie"/>
+   <addaction name="separator"/>
+  </widget>
   <action name="actionOpenXML">
    <property name="text">
     <string>Otwórz XML</string>
@@ -142,6 +158,18 @@
   <action name="actionClose">
    <property name="text">
     <string>Zamknij</string>
+   </property>
+  </action>
+  <action name="actionSumowanie">
+   <property name="checkable">
+    <bool>false</bool>
+   </property>
+   <property name="icon">
+    <iconset theme="document-open">
+     <normaloff>../resources/baseline_summarize_black_48dp.png</normaloff>../resources/baseline_summarize_black_48dp.png</iconset>
+   </property>
+   <property name="text">
+    <string>Sumowanie</string>
    </property>
   </action>
  </widget>

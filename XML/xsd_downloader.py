@@ -10,10 +10,14 @@ XSD Downloader
 import os
 import re
 import ctypes
+import time
+import logging
 import urllib.request
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, unquote
+from Settings import loging_level
 
 XSD_DIR = "./cache"
+logging.basicConfig(level=loging_level)
 
 
 def url_to_path(url: str) -> str:
@@ -33,6 +37,10 @@ def url_to_path(url: str) -> str:
 def plain_filename(url: str) -> str:
     last_slash = url.rfind(r'/')
     last_xsd = url.rfind('.xsd')
+
+    if last_xsd == -1:
+        return f'{time.time()}.xsd'
+
     return url[last_slash+1:last_xsd+4]
 
 
@@ -56,15 +64,13 @@ def localize_links(text: str, filename_complete: str) -> str:
     return text
 
 
-def save_file(url: str, text: str) -> None:
+def save_file(url: str, text: str, file_name: str) -> None:
     """
     Save the XSD `text` data to file path decided by `url`
     also creates the directory structure if it doesn't exist
     """
 
-    # filename_complete = url_to_path(url)
-    filename_complete = plain_filename(url)
-    dir_name = os.path.dirname(XSD_DIR + "/" + filename_complete)
+    dir_name = os.path.dirname(file_name)
 
     # create directory structure
     if not os.path.exists(dir_name):
@@ -73,7 +79,7 @@ def save_file(url: str, text: str) -> None:
         ret = ctypes.windll.kernel32.SetFileAttributesW(dir_name, FILE_ATTRIBUTE_HIDDEN)
 
     #     return last_path
-    with open(XSD_DIR + "/" + filename_complete, "w", encoding="utf_8_sig") as f:
+    with open(file_name, "w", encoding="utf_8_sig") as f:
         # text_localized = localize_links(text, filename_complete)
         f.write(text)
         f.close()
@@ -84,8 +90,17 @@ def download_xml_url(url: str) -> str:
     Fetches URL, returns text of the document
     """
 
-    response = urllib.request.urlopen(url).read()
-    return response.decode("utf-8")
+    urlopen = urllib.request.urlopen(url)
+    response = urlopen.read()
+    headers = dict(urlopen.headers.items())
+    try:
+        content_disposition = headers['content-disposition']
+        content_disposition = content_disposition.replace('attachment; filename*=UTF-8\'\'', '')
+        filename = unquote(urlparse(content_disposition).path)
+    except KeyError:
+        filename = None
+
+    return response.decode("utf-8"), filename
 
 
 def download_schema(url: str) -> None:
@@ -106,21 +121,22 @@ def download_schema(url: str) -> None:
         if url not in downloaded_urls and not os.path.exists(file_path_from_url):
             downloaded_urls.append(url)
             try:
-                xsd_data = download_xml_url(url)
+                xsd_data, header_filename = download_xml_url(url)
 
             except urllib.error.URLError as e:
-                print(
+                logging.debug(
                     "ERROR loading {} , referenced in {} REASON: {} ".format(
                         url, referring_url, e.reason
                     )
                 )
                 return
-
+            if header_filename is not None and header_filename != plain_filename(url):
+                file_path_from_url = XSD_DIR + "/" + header_filename
             # all the XSDs linked from this file via schemaLocation
             schema_locations = re.findall('schemaLocation="([^"]*)"', xsd_data)
 
             # write this file in the directory structure
-            save_file(url, xsd_data)
+            save_file(url, xsd_data, file_path_from_url)
 
             # iterate through all schemaLocation URLs
             for schema_location in schema_locations:
@@ -132,7 +148,7 @@ def download_schema(url: str) -> None:
                 # turns into: http://example.com/index.html
 
                 line = urljoin(url, schema_location)
-                print(line)
+                logging.debug(line)
                 recursive_get_schema_locations(line, url)
 
     recursive_get_schema_locations(url, url)

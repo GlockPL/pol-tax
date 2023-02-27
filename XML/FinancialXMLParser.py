@@ -7,13 +7,52 @@ import xlsxwriter
 import argparse
 import re
 import base64
+import logging
 
 from decimal import *
 
-
 # My files Import
 from XML.xsd_downloader import download_schema, XSD_DIR
-from Settings import Settings
+from Settings import Settings, loging_level
+
+logging.basicConfig(level=loging_level)
+
+
+def excel_style_format(workbook):
+    font_type = "Arial"
+    font_size = 10
+    number_format = workbook.add_format({'num_format': '#,##0.00'})
+    number_format.set_font_name(font_type)
+    number_format.set_font_size(font_size)
+    normal_cell_format = workbook.add_format()
+    normal_cell_format.set_pattern(1)  # This is optional when using a solid fill.
+    normal_cell_format.set_bg_color('#d7e4bc')
+    normal_cell_format.set_border(1)
+    normal_cell_format.set_font_name(font_type)
+    normal_cell_format.set_font_size(font_size)
+
+    header_cell_format = workbook.add_format()
+    header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
+    header_cell_format.set_bg_color('#d7e4bc')
+    header_cell_format.set_border(1)
+    header_cell_format.set_bottom(2)
+    header_cell_format.set_font_name(font_type)
+    header_cell_format.set_font_size(font_size)
+
+    return workbook, header_cell_format, normal_cell_format, number_format
+
+
+def col_size(string):
+    return len(str(string)) + 5
+
+
+def check_cols_max_size(max_list, keys):
+    for idx, val in enumerate(keys):
+        key_size = col_size(val)
+        if max_list[idx] < key_size:
+            max_list[idx] = key_size
+
+    return max_list
 
 
 class FinancialXMLParser:
@@ -56,11 +95,11 @@ class FinancialXMLParser:
         # Rachunek Przepływów
         self.capital_flow_dict, self.capital_flow_title_tag = self.find_capital_flow()
         self.capital_flow_pd, self.capital_flow_border_list = self.generate_capital_flow_pd()
-        print('test')
+        logging.debug('test')
 
     def list_all_root_tags(self):
         for elem in self.root:
-            print(elem.tag)
+            logging.debug(elem.tag)
 
     def remove_curly_braces(self, name):
         last_char = name.find('}')
@@ -274,7 +313,8 @@ class FinancialXMLParser:
         level = 0
         introduction = {}
         for k, v in self.introduction_dict.items():
-            introduction = self.travel_dict_reccur(k, v, introduction, 'WprowadzenieDoSprawozdaniaFinansowego', 'WprowadzenieDoSprawozdaniaFinansowego', None, level)
+            introduction = self.travel_dict_reccur(k, v, introduction, 'WprowadzenieDoSprawozdaniaFinansowego',
+                                                   'WprowadzenieDoSprawozdaniaFinansowego', None, level)
 
         return introduction
 
@@ -303,24 +343,11 @@ class FinancialXMLParser:
                         tag_to_write = tag if k != tag else "Koszta"
                         new_list.append({tag_to_write: temp_dict})
 
-                    temp_dict[cost_type] = Decimal(cost)#float(cost)
+                    temp_dict[cost_type] = Decimal(cost)
                 new_dict[main_tag][k] = new_list
-            # elif type(v) == dict:
-            #     new_dict[main_tag][k] = self.join_two_subtags("KwotaA", "KwotaB", k, data_dict[main_tag])
             elif float(v) is not None:
-                new_dict[main_tag]["Koszta"][k] = Decimal(v)#float(v)
+                new_dict[main_tag]["Koszta"][k] = Decimal(v)
         return new_dict
-
-    def col_size(self, string):
-        return len(str(string)) + 5
-
-    def check_cols_max_size(self, max_list, keys):
-        for idx, val in enumerate(keys):
-            key_size = self.col_size(val)
-            if max_list[idx] < key_size:
-                max_list[idx] = key_size
-
-        return max_list
 
     def reccur_flatten(self, reccur_obj, upper_tag, return_dict: dict):
         if type(reccur_obj) == dict:
@@ -381,18 +408,18 @@ class FinancialXMLParser:
     def generate_introduction_excel_from_pd(self, out_file_name):
         workbook = xlsxwriter.Workbook(out_file_name)
         worksheet = workbook.add_worksheet()
-        workbook, header_cell_format, normal_cell_format, number_format = self.excel_style_format(workbook)
+        workbook, header_cell_format, normal_cell_format, number_format = excel_style_format(workbook)
 
         col_max_size = [0, 0]
         i = 0
         for index, row in self.introduction_pd.iterrows():
             if self.introduction_border_list[i] == 1:
                 worksheet.write(i, 0, row['Col1'], header_cell_format)
-                col_max_size = self.check_cols_max_size(col_max_size, [row['Col1'], ""])
+                col_max_size = check_cols_max_size(col_max_size, [row['Col1'], ""])
             else:
                 worksheet.write(i, 0, row['Col2'], normal_cell_format)
                 worksheet.write(i, 1, row['Col3'], normal_cell_format)
-                col_max_size = self.check_cols_max_size(col_max_size, [row['Col2'], row['Col3']])
+                col_max_size = check_cols_max_size(col_max_size, [row['Col2'], row['Col3']])
             i += 1
 
         for idx, col_siz in enumerate(col_max_size):
@@ -400,80 +427,17 @@ class FinancialXMLParser:
 
         workbook.close()
 
-    def excel_style_format(self, workbook):
-        number_format = workbook.add_format({'num_format': '#,##0.00'})
-        normal_cell_format = workbook.add_format()
-        normal_cell_format.set_pattern(1)  # This is optional when using a solid fill.
-        normal_cell_format.set_bg_color('#d7e4bc')
-        normal_cell_format.set_border(1)
-
-        header_cell_format = workbook.add_format()
-        header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
-        header_cell_format.set_bg_color('#d7e4bc')
-        header_cell_format.set_border(1)
-        header_cell_format.set_bottom(2)
-
-        return workbook, header_cell_format, normal_cell_format, number_format
-
-    def generate_introduction_excel(self, out_file_name):
-        workbook = xlsxwriter.Workbook(out_file_name)
-        worksheet = workbook.add_worksheet()
-
-        header_cell_format = workbook.add_format()
-        header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
-        header_cell_format.set_bg_color('#d7e4bc')
-        header_cell_format.set_border(1)
-
-        normal_cell_format = workbook.add_format()
-        normal_cell_format.set_pattern(1)  # This is optional when using a solid fill.
-        normal_cell_format.set_bg_color('#FEFEFE')
-
-        flatten_introduction = self.flatten_dict(self.introduction_dict)
-        row = 0
-        col_max_size = [0, 0]
-        for k, v in flatten_introduction.items():
-            try:
-                row_name = self.xsd_dict[k]
-            except KeyError:
-                row_name = k
-
-            if row_name == "":
-                continue
-
-            col_max_size = self.check_cols_max_size(col_max_size, [row_name, v])
-
-            if v == "Header":
-                cell_format = header_cell_format
-                val = ""
-                pd_row = [row_name, "", ""]
-            else:
-                cell_format = normal_cell_format
-                val = v
-                pd_row = ["", row_name, val]
-
-            worksheet.write(row, 0, row_name, cell_format)
-            worksheet.write(row, 1, val, cell_format)
-            self.introduction_pd.loc[row] = pd_row
-
-            row += 1
-
-        for idx, col_siz in enumerate(col_max_size):
-            worksheet.set_column(idx, idx, col_siz)
-        workbook.close()
-
     def generate_passives_excel(self, out_file_name):
-        self.generate_excel(out_file_name, self.passives_dict, base_tag="Pasywa")
+        # self.generate_excel(out_file_name, self.passives_dict, base_tag="Pasywa")
+        self.generate_excel_from_numbers_pd(self.passives_pd, self.passives_border_list, out_file_name)
 
     def generate_assets_excel(self, out_file_name):
-        self.generate_excel(out_file_name, self.assets_dict, base_tag="Aktywa")
+        self.generate_excel_from_numbers_pd(self.assets_pd, self.assets_border_list, out_file_name)
 
     def generate_assets_pd(self):
         return self.generate_costs_pd(self.assets_dict, base_tag="Aktywa")
 
     def generate_passives_pd(self):
-        return self.generate_costs_pd(self.passives_dict, base_tag="Pasywa")
-
-    def generate_passive_pd(self):
         return self.generate_costs_pd(self.passives_dict, base_tag="Pasywa")
 
     def generate_gains_and_loses_pd(self):
@@ -487,7 +451,8 @@ class FinancialXMLParser:
 
     def generate_pd_from_number_dict(self, d, main_key):
         border_this_list = []
-        df = pd.DataFrame(columns=[self.xsd_dict[main_key], self.xsd_dict[self.cost_tag_1], self.xsd_dict[self.cost_tag_2]])
+        df = pd.DataFrame(
+            columns=["key", self.xsd_dict[main_key], self.xsd_dict[self.cost_tag_1], self.xsd_dict[self.cost_tag_2]])
 
         row = 1
         for k, v in d[main_key].items():
@@ -496,9 +461,10 @@ class FinancialXMLParser:
             else:
                 border_this_list.append(0)
 
-            df.loc[row] = [f"{k.replace('_', '.')}. {self.xsd_dict[k]}", v[self.cost_tag_1], v[self.cost_tag_2]]
+            df.loc[row] = [k.replace('_', '.'), self.xsd_dict[k], v[self.cost_tag_1], v[self.cost_tag_2]]
             row += 1
 
+        df.set_index("key", inplace=True)
         return df, border_this_list
 
     def generate_gains_and_loses_excel(self, out_file_name):
@@ -507,7 +473,7 @@ class FinancialXMLParser:
 
     def generate_change_in_capital_excel(self, out_file_name):
         self.generate_excel_from_numbers_pd(self.change_in_capital_pd, self.change_in_capital_border_list,
-                                              out_file_name)
+                                            out_file_name)
 
     def generate_capital_flow_excel(self, out_file_name):
         self.generate_excel_from_numbers_pd(self.capital_flow_pd, self.capital_flow_border_list, out_file_name,
@@ -516,12 +482,15 @@ class FinancialXMLParser:
     def generate_excel_from_numbers_pd(self, df, df_border_list, out_file_name, title_row=None):
         workbook = xlsxwriter.Workbook(out_file_name)
         worksheet = workbook.add_worksheet()
-        workbook, header_cell_format, normal_cell_format, number_format = self.excel_style_format(workbook)
+        workbook, header_cell_format, normal_cell_format, number_format = excel_style_format(workbook)
 
         cols = df.columns
+        col_max_size = [0, 0, 0]
 
         for idx, col in enumerate(cols):
             worksheet.write(0, idx, col, header_cell_format)
+
+        col_max_size = check_cols_max_size(col_max_size, cols)
         i = 1
         if title_row is not None:
             worksheet.write(1, 0, "", header_cell_format)
@@ -530,9 +499,8 @@ class FinancialXMLParser:
             worksheet.merge_range(f'A2:C2', self.xsd_dict[title_row], header_cell_format)
             i += 1
 
-        col_max_size = [0, 0, 0]
         for index, row in df.iterrows():
-            if df_border_list[i-2] == 1:
+            if df_border_list[i - 2] == 1:
                 cell_format = header_cell_format
             else:
                 cell_format = normal_cell_format
@@ -543,10 +511,11 @@ class FinancialXMLParser:
                 worksheet.write(i, 2, "", cell_format)
                 worksheet.merge_range(i, 0, i, 2, row[cols[0]], header_cell_format)
             else:
-                worksheet.write(i, 0, row[cols[0]], cell_format)
+                prefix = f"{index}. " if len(index) > 0 else ""
+                worksheet.write(i, 0, f"{prefix}{row[cols[0]]}", cell_format)
                 worksheet.write_number(i, 1, row[cols[1]], number_format)
                 worksheet.write_number(i, 2, row[cols[2]], number_format)
-                col_max_size = self.check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
+                col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
             i += 1
 
         for idx, col_siz in enumerate(col_max_size):
@@ -557,10 +526,10 @@ class FinancialXMLParser:
     def generate_costs_pd(self, main_dict, base_tag="Aktywa", column_tag="Koszta"):
         border_this_list = []
         temp_dict = main_dict[base_tag].copy()
-        df = pd.DataFrame(columns=["", self.xsd_dict[self.cost_tag_1], self.xsd_dict[self.cost_tag_2]])
+        df = pd.DataFrame(columns=["key", base_tag, self.xsd_dict[self.cost_tag_1], self.xsd_dict[self.cost_tag_2]])
 
         row = 0
-        df.loc[row+1] = [self.xsd_dict[base_tag], temp_dict[column_tag][self.cost_tag_1],
+        df.loc[row] = ["", self.xsd_dict[base_tag], temp_dict[column_tag][self.cost_tag_1],
                        temp_dict[column_tag][self.cost_tag_2]]
         border_this_list.append(0)
 
@@ -571,7 +540,7 @@ class FinancialXMLParser:
         for k, v in temp_dict.items():
             if type(v) == list:
                 prefix = k.replace(f"{base_tag}_", "")
-                df.loc[row+1] = [f"{prefix}. {self.xsd_dict[k]}", v[0]['Koszta'][self.cost_tag_1],
+                df.loc[row] = [prefix, self.xsd_dict[k], v[0]['Koszta'][self.cost_tag_1],
                                v[0]['Koszta'][self.cost_tag_2]]
                 border_this_list.append(1)
                 row += 1
@@ -583,10 +552,11 @@ class FinancialXMLParser:
                             border_this_list.append(0)
 
                         prefix = list_k.replace(f"{base_tag}_", "").replace("_", ".")
-                        df.loc[row+1] = [f"{prefix} {self.xsd_dict[list_k]}", list_v[self.cost_tag_1],
+                        df.loc[row] = [prefix, self.xsd_dict[list_k], list_v[self.cost_tag_1],
                                        list_v[self.cost_tag_2]]
                         row += 1
                         border_count += 1
+        df.set_index("key", inplace=True)
         return df, border_this_list
 
     def generate_excel(self, out_file_name, main_dict, base_tag="Aktywa"):
@@ -617,7 +587,7 @@ class FinancialXMLParser:
         row += 1
         del temp_dict['Koszta']
         col_max_size = [0, 0, 0]
-        col_max_size = self.check_cols_max_size(col_max_size,
+        col_max_size = check_cols_max_size(col_max_size,
                                                 [self.xsd_dict[base_tag], self.xsd_dict[self.cost_tag_1],
                                                  self.xsd_dict[self.cost_tag_2]])
         border_count = 0
@@ -636,7 +606,7 @@ class FinancialXMLParser:
                         else:
                             formt = cell_format
 
-                        col_max_size = self.check_cols_max_size(col_max_size,
+                        col_max_size = check_cols_max_size(col_max_size,
                                                                 [self.xsd_dict[list_k], list_v[self.cost_tag_1],
                                                                  list_v[self.cost_tag_2]])
                         prefix = list_k.replace(f"{base_tag}_", "").replace("_", ".")
@@ -652,7 +622,8 @@ class FinancialXMLParser:
         workbook.close()
 
     def extract_embedded_files(self):
-        files_dict = self.embedded_files_dict['DodatkoweInformacjeIObjasnieniaJednostkaInna']['DodatkoweInformacjeIObjasnienia']
+        files_dict = self.embedded_files_dict['DodatkoweInformacjeIObjasnieniaJednostkaInna'][
+            'DodatkoweInformacjeIObjasnienia']
         files_list = []
         for k, v in files_dict.items():
             if k == "Plik":
@@ -670,6 +641,208 @@ class FinancialXMLParser:
         return concatenated_path
 
 
+class FinancialXMLRulesCheck:
+    def __init__(self, f_xml: FinancialXMLParser):
+        self.f_xml = f_xml
+
+        self.assets_colums = f_xml.assets_pd.columns
+        self.passives_colums = f_xml.passives_pd.columns
+        # "A.III": {"rows": [[]], "cols": [[self.assets_colums] * 5]}
+        self.assets = {
+            "": {"rows": [[self.f_xml.passives_pd.loc['']],
+                          [self.f_xml.assets_pd.loc['A'], self.f_xml.assets_pd.loc['B'], self.f_xml.assets_pd.loc['C'],
+                           self.f_xml.assets_pd.loc['D']]], "cols": [[self.passives_colums], [self.assets_colums] * 4]},
+            "A": {"rows": [
+                [self.f_xml.assets_pd.loc['A.I'], self.f_xml.assets_pd.loc['A.II'], self.f_xml.assets_pd.loc['A.III'],
+                 self.f_xml.assets_pd.loc['A.IV'], self.f_xml.assets_pd.loc['A.V']]],
+                "cols": [[self.assets_colums] * 5]},
+            "A.I": {"rows": [[self.f_xml.assets_pd.loc['A.I.1'], self.f_xml.assets_pd.loc['A.I.2'],
+                              self.f_xml.assets_pd.loc['A.I.3'],
+                              self.f_xml.assets_pd.loc['A.I.4']]], "cols": [[self.assets_colums] * 4]},
+            "A.II": {
+                "rows": [[self.f_xml.assets_pd.loc['A.II.1'], self.f_xml.assets_pd.loc['A.II.2'],
+                          self.f_xml.assets_pd.loc['A.II.3']]],
+                "cols": [[self.assets_colums] * 3]},
+            "A.II.1": {"rows": [[self.f_xml.assets_pd.loc['A.II.1.A'], self.f_xml.assets_pd.loc['A.II.1.B'],
+                                 self.f_xml.assets_pd.loc['A.II.1.C'], self.f_xml.assets_pd.loc['A.II.1.D'],
+                                 self.f_xml.assets_pd.loc['A.II.1.E']]], "cols": [[self.assets_colums] * 5]},
+            "A.III": {"rows": [[self.f_xml.assets_pd.loc['A.III.1'], self.f_xml.assets_pd.loc['A.III.2'],
+                                self.f_xml.assets_pd.loc['A.III.3']]], "cols": [[self.assets_colums] * 3]},
+            "A.IV": {"rows": [[self.f_xml.assets_pd.loc['A.IV.1'], self.f_xml.assets_pd.loc['A.IV.2'],
+                               self.f_xml.assets_pd.loc['A.IV.3'], self.f_xml.assets_pd.loc['A.IV.4']]],
+                     "cols": [[self.assets_colums] * 4]},
+            "A.IV.3": {"rows": [[self.f_xml.assets_pd.loc['A.IV.3.A'], self.f_xml.assets_pd.loc['A.IV.3.B'],
+                                 self.f_xml.assets_pd.loc['A.IV.3.C']]], "cols": [[self.assets_colums] * 3]},
+            "A.IV.3.A": {"rows": [[self.f_xml.assets_pd.loc['A.IV.3.A.1'], self.f_xml.assets_pd.loc['A.IV.3.A.2'],
+                                   self.f_xml.assets_pd.loc['A.IV.3.A.3'], self.f_xml.assets_pd.loc['A.IV.3.A.4']]],
+                         "cols": [[self.assets_colums] * 4]},
+            "A.IV.3.B": {"rows": [[self.f_xml.assets_pd.loc['A.IV.3.B.1'], self.f_xml.assets_pd.loc['A.IV.3.B.2'],
+                                   self.f_xml.assets_pd.loc['A.IV.3.B.3'], self.f_xml.assets_pd.loc['A.IV.3.B.4']]],
+                         "cols": [[self.assets_colums] * 4]},
+            "A.IV.3.C": {"rows": [[self.f_xml.assets_pd.loc['A.IV.3.C.1'], self.f_xml.assets_pd.loc['A.IV.3.C.2'],
+                                   self.f_xml.assets_pd.loc['A.IV.3.C.3'], self.f_xml.assets_pd.loc['A.IV.3.C.4']]],
+                         "cols": [[self.assets_colums] * 4]},
+            "A.V": {"rows": [[self.f_xml.assets_pd.loc['A.V.1'], self.f_xml.assets_pd.loc['A.V.2']]],
+                    "cols": [[self.assets_colums] * 2]},
+            "B": {"rows": [
+                [self.f_xml.assets_pd.loc['B.I'], self.f_xml.assets_pd.loc['B.II'], self.f_xml.assets_pd.loc['B.III'],
+                 self.f_xml.assets_pd.loc['B.IV']]], "cols": [[self.assets_colums] * 4]},
+            "B.I": {"rows": [
+                [self.f_xml.assets_pd.loc['B.I.1'], self.f_xml.assets_pd.loc['B.I.2'],
+                 self.f_xml.assets_pd.loc['B.I.3'],
+                 self.f_xml.assets_pd.loc['B.I.4'], self.f_xml.assets_pd.loc['B.I.5']]],
+                "cols": [[self.assets_colums] * 5]},
+            "B.II": {"rows": [[self.f_xml.assets_pd.loc['B.II.1'], self.f_xml.assets_pd.loc['B.II.2'],
+                               self.f_xml.assets_pd.loc['B.II.3']]], "cols": [[self.assets_colums] * 3]},
+            "B.II.1": {"rows": [[self.f_xml.assets_pd.loc['B.II.1.A'], self.f_xml.assets_pd.loc['B.II.1.B']]],
+                       "cols": [[self.assets_colums] * 2]},
+            "B.II.1.A": {"rows": [[self.f_xml.assets_pd.loc['B.II.1.A.1'], self.f_xml.assets_pd.loc['B.II.1.A.2']]],
+                         "cols": [[self.assets_colums] * 2]},
+            "B.II.2": {"rows": [[self.f_xml.assets_pd.loc['B.II.2.A'], self.f_xml.assets_pd.loc['B.II.2.B']]],
+                       "cols": [[self.assets_colums] * 2]},
+            "B.II.2.A": {"rows": [[self.f_xml.assets_pd.loc['B.II.2.A.1'], self.f_xml.assets_pd.loc['B.II.2.A.2']]],
+                         "cols": [[self.assets_colums] * 2]},
+            "B.II.3": {"rows": [[self.f_xml.assets_pd.loc['B.II.3.A'], self.f_xml.assets_pd.loc['B.II.3.B'],
+                                 self.f_xml.assets_pd.loc['B.II.3.C'], self.f_xml.assets_pd.loc['B.II.3.D']]],
+                       "cols": [[self.assets_colums] * 4]},
+            "B.II.3.A": {"rows": [[self.f_xml.assets_pd.loc['B.II.3.A.1'], self.f_xml.assets_pd.loc['B.II.3.A.2']]],
+                         "cols": [[self.assets_colums] * 2]},
+            "B.III": {"rows": [[self.f_xml.assets_pd.loc['B.III.1'], self.f_xml.assets_pd.loc['B.III.2']]],
+                      "cols": [[self.assets_colums] * 2]},
+            "B.III.1": {"rows": [[self.f_xml.assets_pd.loc['B.III.1.A'], self.f_xml.assets_pd.loc['B.III.1.B'],
+                                  self.f_xml.assets_pd.loc['B.III.1.C']]],
+                        "cols": [[self.assets_colums] * 3]},
+            "B.III.1.A": {"rows": [[self.f_xml.assets_pd.loc['B.III.1.A.1'], self.f_xml.assets_pd.loc['B.III.1.A.2'],
+                                    self.f_xml.assets_pd.loc['B.III.1.A.3'], self.f_xml.assets_pd.loc['B.III.1.A.4']]],
+                          "cols": [[self.assets_colums] * 4]},
+            "B.III.1.B": {"rows": [[self.f_xml.assets_pd.loc['B.III.1.B.1'], self.f_xml.assets_pd.loc['B.III.1.B.2'],
+                                    self.f_xml.assets_pd.loc['B.III.1.B.3'], self.f_xml.assets_pd.loc['B.III.1.B.4']]],
+                          "cols": [[self.assets_colums] * 4]},
+            "B.III.1.C": {"rows": [[self.f_xml.assets_pd.loc['B.III.1.C.1'], self.f_xml.assets_pd.loc['B.III.1.C.2'],
+                                    self.f_xml.assets_pd.loc['B.III.1.C.3']]],
+                          "cols": [[self.assets_colums] * 3]}
+        }
+
+        # self.assets = {
+        #     "": [{1: f_xml.assets_pd.loc[''][self.assets_colums[1]] - f_xml.passives_pd.loc[''][self.passives_colums[1]],
+        #           2: f_xml.assets_pd.loc[''][self.assets_colums[2]] - f_xml.passives_pd.loc[''][self.passives_colums[2]]},
+        #          {1: f_xml.assets_pd.loc[''][self.assets_colums[1]] - (
+        #                  f_xml.assets_pd.loc['A'][self.assets_colums[1]] + f_xml.assets_pd.loc['B'][self.assets_colums[1]] +
+        #                  f_xml.assets_pd.loc['C'][self.assets_colums[1]] + f_xml.assets_pd.loc['D'][self.assets_colums[1]]),
+        #           2: f_xml.assets_pd.loc[''][self.assets_colums[2]] - (
+        #                   f_xml.assets_pd.loc['A'][self.assets_colums[2]] + f_xml.assets_pd.loc['B'][self.assets_colums[2]] +
+        #                   f_xml.assets_pd.loc['C'][self.assets_colums[2]] + f_xml.assets_pd.loc['D'][self.assets_colums[2]]),
+        #           }
+        #          ],
+        #     "A": [{1: f_xml.assets_pd.loc['A'][self.assets_colums[1]] - (
+        #             f_xml.assets_pd.loc['A.I'][self.assets_colums[1]] + f_xml.assets_pd.loc['A.II'][self.assets_colums[1]] +
+        #             f_xml.assets_pd.loc['A.III'][self.assets_colums[1]] + f_xml.assets_pd.loc['A.IV'][self.assets_colums[1]] +
+        #             f_xml.assets_pd.loc['A.V'][self.assets_colums[1]]),
+        #            2: f_xml.assets_pd.loc['A'][self.assets_colums[2]] - (
+        #                    f_xml.assets_pd.loc['A.I'][self.assets_colums[2]] + f_xml.assets_pd.loc['A.II'][
+        #                self.assets_colums[2]] + f_xml.assets_pd.loc['A.III'][self.assets_colums[2]] +
+        #                    f_xml.assets_pd.loc['A.IV'][self.assets_colums[2]] + f_xml.assets_pd.loc['A.V'][
+        #                        self.assets_colums[2]])
+        #
+        #            }],
+        #     "A.I": [{1: f_xml.assets_pd.loc['A.I'][self.assets_colums[1]] - (
+        #             f_xml.assets_pd.loc['A.I.1'][self.assets_colums[1]] + f_xml.assets_pd.loc['A.I.2'][self.assets_colums[1]] +
+        #             f_xml.assets_pd.loc['A.I.3'][self.assets_colums[1]] + f_xml.assets_pd.loc['A.I.4'][
+        #                 self.assets_colums[1]]),
+        #              2: f_xml.assets_pd.loc['A.I'][self.assets_colums[2]] - (
+        #                      f_xml.assets_pd.loc['A.I.1'][self.assets_colums[2]] + f_xml.assets_pd.loc['A.I.2'][
+        #                  self.assets_colums[2]] + f_xml.assets_pd.loc['A.I.3'][self.assets_colums[2]] +
+        #                      f_xml.assets_pd.loc['A.I.4'][self.assets_colums[2]])}
+        #
+        #             ],
+        #     "A.II": [{1: f_xml.assets_pd.loc['A.II'][self.assets_colums[1]] - (
+        #             f_xml.assets_pd.loc['A.II.1'][self.assets_colums[1]] + f_xml.assets_pd.loc['A.II.2'][
+        #         self.assets_colums[1]] + f_xml.assets_pd.loc['A.II.3'][self.assets_colums[1]]),
+        #               2: f_xml.assets_pd.loc['A.II'][self.assets_colums[2]] - (
+        #                       f_xml.assets_pd.loc['A.II.1'][self.assets_colums[2]] + f_xml.assets_pd.loc['A.II.2'][
+        #                   self.assets_colums[2]] + f_xml.assets_pd.loc['A.II.3'][self.assets_colums[2]])}]
+        #
+        # }
+
+    def rule_check(self, index):
+        index_rows = self.assets[index]['rows']
+        index_cols = self.assets[index]['cols']
+
+        res_list = []
+
+        for i in range(len(index_rows)):
+            sum_col1 = Decimal(0.0)
+            sum_col2 = Decimal(0.0)
+            internal_index_rows = index_rows[i]
+            internal_index_cols = index_cols[i]
+            for j in range(len(index_rows[i])):
+                sum_col1 += internal_index_rows[j][internal_index_cols[j][1]]
+                sum_col2 += internal_index_rows[j][internal_index_cols[j][2]]
+            sum_col1 = sum_col1 - self.f_xml.assets_pd.loc[index][self.assets_colums[1]]
+            sum_col2 = sum_col2 - self.f_xml.assets_pd.loc[index][self.assets_colums[2]]
+            bool_sub_col1 = sum_col1 == Decimal(0.0)
+            bool_sub_col2 = sum_col2 == Decimal(0.0)
+            res_list.append((bool_sub_col1, bool_sub_col2))
+
+        return res_list
+
+    def to_excel(self, out_file):
+        workbook = xlsxwriter.Workbook(out_file)
+        worksheet = workbook.add_worksheet()
+        true_false_format = workbook.add_format({'num_format': '0;;"TRUE";"FALSE"'})
+        workbook, header_cell_format, normal_cell_format, number_format = excel_style_format(workbook)
+
+        df = self.f_xml.assets_pd
+        df_border_list = self.f_xml.assets_border_list
+
+        cols = df.columns
+        col_max_size = [0, 0, 0]
+
+        for idx, col in enumerate(cols):
+            worksheet.write(0, idx, col, header_cell_format)
+
+        col_max_size = check_cols_max_size(col_max_size, cols)
+        i = 1
+        for index, row in df.iterrows():
+            if df_border_list[i - 2] == 1:
+                cell_format = header_cell_format
+            else:
+                cell_format = normal_cell_format
+
+            if row[cols[1]] is None or row[cols[2]] is None:
+                worksheet.write(i, 0, "", cell_format)
+                worksheet.write(i, 1, "", cell_format)
+                worksheet.write(i, 2, "", cell_format)
+                worksheet.merge_range(i, 0, i, 2, row[cols[0]], header_cell_format)
+            else:
+                prefix = f"{index}. " if len(index) > 0 else ""
+                occurences = prefix.count('.')
+                prefix = ' ' * occurences + prefix
+                worksheet.write(i, 0, f"{prefix}{row[cols[0]]}", cell_format)
+                worksheet.write_number(i, 1, row[cols[1]], number_format)
+                worksheet.write_number(i, 2, row[cols[2]], number_format)
+                col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
+
+                if index in self.assets:
+                    sum_check = self.rule_check(index)
+                    for idx, s_check in enumerate(sum_check):
+                        # worksheet.write_number(i, 2 * idx + 3, s_check[0], number_format)
+                        # worksheet.write_number(i, 2 * idx + 4, s_check[1], number_format)
+                        worksheet.write_boolean(i, 2 * idx + 3, s_check[0],true_false_format)
+                        worksheet.write_boolean(i, 2 * idx + 4, s_check[1],true_false_format)
+
+                    # for idx, d in enumerate(self.assets[index]):
+                    #     worksheet.write_number(i, 2 * idx + 3, d[1], number_format)
+                    #     worksheet.write_number(i, 2 * idx + 4, d[2], number_format)
+
+            i += 1
+
+        for idx, col_siz in enumerate(col_max_size):
+            worksheet.set_column(idx, idx, col_siz)
+
+        workbook.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Program do kowersji xmlów z KRSu na pliki excel")
     parser.add_argument(
@@ -682,10 +855,9 @@ if __name__ == "__main__":
     path = args.file
 
     if path is not None:
-        f_xml = FinancialXMLParser(path)
+        fxml = FinancialXMLParser(path)
         # f_xml.generate_excel('Aktywa.xlsx')
-        f_xml.generate_assets_excel('Aktywa.xlsx')
-        f_xml.generate_passives_excel('Pasywa.xlsx')
+        fxml.generate_assets_excel('Aktywa.xlsx')
+        fxml.generate_passives_excel('Pasywa.xlsx')
         # passives = f_xml.get_equity_plus_liabilities()
-        # print(passives)
-    # print(f_xml.financial_balance_dict)
+    logging.debug(fxml.financial_balance_dict)

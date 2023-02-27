@@ -1,6 +1,9 @@
 import pickle
 from pathlib import Path
 import atexit
+import logging
+
+loging_level = logging.DEBUG
 
 
 class Settings:

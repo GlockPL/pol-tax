@@ -40,15 +40,17 @@ class Version(object):
         return self.get_version()
 
     def up_patch(self):
+        major_val = self.version_np[0]
         minor_val = self.version_np[1]
         patch_val = self.version_np[2]
         if patch_val + 1 >= 10:
             patch_val = 0
             minor_val += 1
 
+        self.version_np[0] = major_val
         self.version_np[1] = minor_val
         self.version_np[2] = patch_val
-        self.version_np[0] = 0
+        self.version_np[3] = 0
         return self.get_version()
 
     def up_major(self):
@@ -57,6 +59,9 @@ class Version(object):
         self.version_np[2] += 0
         self.version_np[3] += 0
         return self.get_version()
+
+    def set_version(self, major, minor, patch, build):
+        self.version_np = np.array([major, minor, patch, build])
 
     def __enter__(self):
         return self
@@ -68,3 +73,8 @@ class Version(object):
     def cleanup(self):
         with self._version_file.open(mode='wb') as output_file:
             np.save(output_file, self.version_np)
+
+
+if __name__ == "__main__":
+    ver = Version()
+    ver.set_version(0, 0, 1, 0)
