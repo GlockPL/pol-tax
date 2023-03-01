@@ -1,14 +1,14 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource prefix="/icons">
-    <file>./baseline_picture_as_pdf_black_48dp.png</file>
-    <file>./baseline_settings_black_48dp.png</file>
-    <file>./baseline_summarize_black_48dp.png</file>
-    <file>./baseline_table_view_black_48dp.png</file>
-    <file>./cropped-favicon-1-135x135.png</file>
-    <file>./cropped-favicon-1-270x270.png</file>
-    <file>./cropped-favicon-1-540x540.jpg</file>
-    <file>./excel_icon.jpg</file>
-    <file>./spreadsheet-icon.jpg</file>
-    <file>./summarize_black_48dp.svg</file>
+    <file alias="pdf_icon.png">./baseline_picture_as_pdf_black_48dp.png</file>
+    <file alias="settings_icon.png">./baseline_settings_black_48dp.png</file>
+    <file alias="summarize_icon.png">./baseline_summarize_black_48dp.png</file>
+    <file alias="table_view_icon.png">./baseline_table_view_black_48dp.png</file>
+    <file alias="pol_tax_135_icon.png">./cropped-favicon-1-135x135.png</file>
+    <file alias="pol_tax_270_icon.png">./cropped-favicon-1-270x270.png</file>
+    <file alias="pol_tax_540_icon.jpg">./cropped-favicon-1-540x540.jpg</file>
+    <file alias="excel_icon.jpg">./excel_icon.jpg</file>
+    <file alias="spreadsheet_icon.jpg">./spreadsheet-icon.jpg</file>
+    <file alias="summarize_icon.svg">./summarize_black_48dp.svg</file>
 </qresource>
 </RCC>

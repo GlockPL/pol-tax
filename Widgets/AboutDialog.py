@@ -1,8 +1,8 @@
 from PySide6 import QtWidgets, QtCore, QtGui
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout
 
 from Other.Version import Version
-
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
@@ -10,13 +10,13 @@ class AboutDialog(QDialog):
         version = Version()
 
         self.setWindowTitle("O programie")
-        self.setWindowIcon(QtGui.QIcon("./resources/cropped-favicon-1-135x135.png"))
+        self.setWindowIcon(QIcon(QPixmap(":/icons/pol_tax_135_icon.png")))
         self.resize(390, 220)
 
         horizontalLayout = QHBoxLayout()
 
         image_label = QtWidgets.QLabel()
-        pixmap = QtGui.QPixmap("./resources/cropped-favicon-1-540x540")
+        pixmap = QPixmap(":/icons/pol_tax_540_icon.jpg")
         pixmap = pixmap.scaled(135, 135, QtCore.Qt.KeepAspectRatio)
         image_label.setPixmap(pixmap)
         image_label.setAlignment(QtCore.Qt.AlignCenter)

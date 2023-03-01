@@ -1,7 +1,7 @@
 from pathlib import Path
-from PySide6 import QtWidgets, QtGui
+from PySide6 import QtWidgets
 from PySide6.QtWidgets import QTableView, QHeaderView, QLabel
-from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QPixmap
 from Settings import Settings
 
 
@@ -9,7 +9,7 @@ class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Ustawienia")
-        self.setWindowIcon(QtGui.QIcon("./resources/baseline_settings_black_48dp.png"))
+        self.setWindowIcon(QIcon(QPixmap(":/icons/settings_icon.png")))
         self.settings = Settings()
         self.setMinimumWidth(390)
         self.setMinimumHeight(455)

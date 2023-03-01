@@ -10,7 +10,7 @@ import base64
 import logging
 import string
 
-from decimal import *
+from decimal import Decimal
 
 # My files Import
 from XML.xsd_downloader import download_schema, XSD_DIR
@@ -35,6 +35,8 @@ def excel_style_format(workbook):
     normal_cell_format.set_border(1)
     normal_cell_format.set_font_name(font_type)
     normal_cell_format.set_font_size(font_size)
+    normal_cell_format.set_text_wrap()
+    normal_cell_format.set_align('vcenter')
 
     header_cell_format = workbook.add_format()
     header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
@@ -43,12 +45,14 @@ def excel_style_format(workbook):
     header_cell_format.set_bottom(2)
     header_cell_format.set_font_name(font_type)
     header_cell_format.set_font_size(font_size)
+    header_cell_format.set_text_wrap()
+    header_cell_format.set_align('vcenter')
 
     return workbook, header_cell_format, normal_cell_format, number_format
 
 
 def col_size(string):
-    return len(str(string)) + 5
+    return len(str(string))# + 5
 
 
 def check_cols_max_size(max_list, keys):
@@ -105,9 +109,7 @@ class FinancialXMLParser:
         self.capital_flow_pd, self.capital_flow_border_list = self.generate_capital_flow_pd()
         # Informacja dodatkowa
         self.additional_info_dict = self.find_additional_info()
-        if self.additional_info_dict is not None:
-            self.additional_info_pd, self.additional_info_border_list = self.generate_additional_info_pd()
-            self.generate_additional_info_excel('./Excel/DodatkoweInfo.xlsx')
+        self.additional_info_pd, self.additional_info_border_list = self.generate_additional_info_pd()
 
         logging.debug('test')
 
@@ -265,28 +267,41 @@ class FinancialXMLParser:
     def find_change_in_capital(self):
         main_tag = 'ZestZmianWKapitale'
         main_elem = self.recurse_search(self.root, main_tag)
+        if main_elem is not None:
+            change_in_capital_dict_xml = {}
+            change_in_capital_dict_xml = self.xml_tag_to_dict(main_elem, change_in_capital_dict_xml)
 
-        change_in_capital_dict_xml = {}
-        change_in_capital_dict_xml = self.xml_tag_to_dict(main_elem, change_in_capital_dict_xml)
+            change_in_capital_dict = self.flatten_dict_with_numbers(change_in_capital_dict_xml, main_tag)
 
-        change_in_capital_dict = self.flatten_dict_with_numbers(change_in_capital_dict_xml, main_tag)
+            return {main_tag: change_in_capital_dict}
 
-        return {main_tag: change_in_capital_dict}
+        return None
 
     def find_capital_flow(self):
-        main_tag = 'PrzeplywyPosr'
-        flow_posr_tag = self.recurse_search(self.root, main_tag)
+        main_tag_posr = 'PrzeplywyPosr'
+        flow_posr_tag = self.recurse_search(self.root, main_tag_posr)
+        main_tag_bezposr = 'PrzeplywyBezp'
+        flow_bezposr_tag = self.recurse_search(self.root, main_tag_bezposr)
+
+        if flow_posr_tag is not None:
+            main_elem = main_tag_posr
+            main_tag = flow_posr_tag
+        elif flow_bezposr_tag is not None:
+            main_elem = main_tag_bezposr
+            main_tag = flow_bezposr_tag
+        else:
+            return None, None
 
         capital_flow_dict_xml = {}
-        capital_flow_dict_xml = self.xml_tag_to_dict(flow_posr_tag, capital_flow_dict_xml)
+        capital_flow_dict_xml = self.xml_tag_to_dict(main_tag, capital_flow_dict_xml)
 
-        capital_flow_dict = self.flatten_dict_with_numbers(capital_flow_dict_xml, main_tag)
+        capital_flow_dict = self.flatten_dict_with_numbers(capital_flow_dict_xml, main_elem)
 
         for k, v in capital_flow_dict.items():
             if not v:
                 capital_flow_dict[k] = {self.cost_tag_1: None, self.cost_tag_2: None}
 
-        return {'RachPrzeplywow': capital_flow_dict}, main_tag
+        return {'RachPrzeplywow': capital_flow_dict}, main_elem
 
     def find_introduction(self):
         # WprowadzenieDoSprawozdaniaFinansowego
@@ -470,27 +485,31 @@ class FinancialXMLParser:
         return df, border_this_list
 
     def generate_additional_info_pd(self):
-        df = pd.DataFrame(columns=[self.xsd_dict_orig["InformacjaDodatkowaDotyczacaPodatkuDochodowego"],
-                                   self.xsd_dict_orig[self.cost_tag_1], self.xsd_dict_orig[self.cost_tag_2],
-                                   self.xsd_dict_orig[self.cost_tag_3]])
-        row = 0
-        border_list = []
-        for k, v in self.additional_info_dict.items():
-            value_lst = [self.xsd_dict_orig[k], None, None, None]
-            df.loc[row] = value_lst
-            border_list.append(1)
-            row += 1
-            for kk, vv in v.items():
-                value_lst2 = [self.xsd_dict_orig[kk]]
-                for cost_k, cost_v in vv.items():
-                    value_lst2.append(cost_v)
-                df.loc[row] = value_lst2
-                border_list.append(0)
+        if self.additional_info_dict is not None:
+            df = pd.DataFrame(columns=[self.xsd_dict_orig["InformacjaDodatkowaDotyczacaPodatkuDochodowego"],
+                                       self.xsd_dict_orig[self.cost_tag_1], self.xsd_dict_orig[self.cost_tag_2],
+                                       self.xsd_dict_orig[self.cost_tag_3]])
+            row = 0
+            border_list = []
+            for k, v in self.additional_info_dict.items():
+                value_lst = [self.xsd_dict_orig[k], None, None, None]
+                k_index = self.xsd_dict_orig[k].split('.')[0].strip()
+                df.loc[k_index] = value_lst
+                border_list.append(1)
+                row += 1
+                for kk, vv in v.items():
+                    value_lst2 = [self.xsd_dict_orig[kk]]
+                    kk_index = kk.replace("_", ".")
+                    for cost_k, cost_v in vv.items():
+                        value_lst2.append(cost_v)
+                    df.loc[f"{k_index}_{kk_index}"] = value_lst2
+                    border_list.append(0)
+                    row += 1
+
                 row += 1
 
-            row += 1
-
-        return df, border_list
+            return df, border_list
+        return None, None
 
     def generate_additional_info_excel(self, out_file_name):
         workbook = xlsxwriter.Workbook(out_file_name)
@@ -564,10 +583,14 @@ class FinancialXMLParser:
         return self.generate_pd_from_number_dict(self.gain_and_loses_dict, 'RZiS')
 
     def generate_change_in_capital_pd(self):
-        return self.generate_pd_from_number_dict(self.change_in_capital_dict, 'ZestZmianWKapitale')
+        if self.change_in_capital_dict is not None:
+            return self.generate_pd_from_number_dict(self.change_in_capital_dict, 'ZestZmianWKapitale')
+        return None, None
 
     def generate_capital_flow_pd(self):
-        return self.generate_pd_from_number_dict(self.capital_flow_dict, 'RachPrzeplywow')
+        if self.capital_flow_dict is not None:
+            return self.generate_pd_from_number_dict(self.capital_flow_dict, 'RachPrzeplywow')
+        return None, None
 
     def generate_pd_from_number_dict(self, d, main_key):
         border_this_list = []
@@ -761,6 +784,10 @@ class FinancialXMLParser:
         return concatenated_path
 
 
+def decimal_to_bool(dec_val):
+    return dec_val == 0.0
+
+
 class FinancialXMLRulesCheck:
     def __init__(self, f_xml: FinancialXMLParser):
         self.f_xml = f_xml
@@ -778,7 +805,10 @@ class FinancialXMLRulesCheck:
                     'change_in_capital': {'pd': self.f_xml.change_in_capital_pd,
                                           'border_list': self.f_xml.change_in_capital_border_list},
                     'capital_flow': {'pd': self.f_xml.capital_flow_pd,
-                                     'border_list': self.f_xml.change_in_capital_border_list}}
+                                     'border_list': self.f_xml.capital_flow_border_list},
+                    'additional_info': {'pd': self.f_xml.additional_info_pd,
+                                        'border_list': self.f_xml.additional_info_border_list}
+                    }
         self.rules = {'assets': {'': [{'value': {'index': '', 'source': self.f_xml.passives_pd}, 'years': [1, 2]},
                                       {'range': 'A-D', 'years': [1, 2]}],
                                  'A': [{'range': 'A.I-V', 'years': [1, 2]}],
@@ -835,8 +865,118 @@ class FinancialXMLRulesCheck:
                           'G.I': [{'range': 'G.I.A-B', 'years': [1, 2]}],
                           'H': [{'range': 'H.I-IV', 'years': [1, 2]}],
                           'I': [{'special': 'F+G-H', 'years': [1, 2]}],
-                          # 'J': [{'very_special': 'F+G-H', 'years': [1, 2]}], TODO: To wymaga konkretnej uwagi!
-                          'L': [{'special': 'I-J-K', 'years': [1, 2]}],
+                          'J': [{'value': {'data': self.f_xml.additional_info_pd.loc['K_RB'][
+                                                       self.f_xml.additional_info_pd.columns[1]] - (
+                                                           self.f_xml.assets_pd.loc['A.V.1'][
+                                                               self.f_xml.assets_pd.columns[1]] -
+                                                           self.f_xml.assets_pd.loc['A.V.1'][
+                                                               self.f_xml.assets_pd.columns[2]]) + (
+                                                           self.f_xml.passives_pd.loc['B.I.1'][
+                                                               self.f_xml.passives_pd.columns[1]] -
+                                                           self.f_xml.passives_pd.loc['B.I.1'][
+                                                               self.f_xml.passives_pd.columns[2]])}, 'years': [1]}],
+                          'L': [{'special': 'I-J-K', 'years': [1, 2]}]},
+                      'change_in_capital': {
+                          'I': [{'value': {'data': self.f_xml.change_in_capital_pd.loc['II'][
+                              self.f_xml.change_in_capital_pd.columns[2]]}, 'years': [1]},
+                                {'range': 'IA.1-5', 'years': [1, 2]}],
+                          'IA': [{'special': 'I+I.1+I.2', 'years': [1, 2]}],
+                          'IA.1': [{'value': {'data': self.f_xml.change_in_capital_pd.loc['IA.1.2'][
+                              self.f_xml.change_in_capital_pd.columns[2]]}, 'years': [1]}],
+                          'IA.1.1': [{'range': 'IA.1.1.A-B', 'years': [1, 2]}],
+                          'IA.1.2': [{'special': 'IA.1+IA.1.1', 'years': [1, 2]}],
+                          'IA.2': [{'value': {'data': self.f_xml.change_in_capital_pd.loc['IA.2.2'][
+                              self.f_xml.change_in_capital_pd.columns[2]]}, 'years': [1]}],
+                          'IA.2.1': [{'diff_range': 'IA.2.1.A-B', 'years': [1, 2]}],
+                          'IA.2.2': [{'special': 'IA.2+IA.2.1', 'years': [1, 2]}],
+                          'IA.3': [{'value': {'data': self.f_xml.change_in_capital_pd.loc['IA.3.2'][
+                              self.f_xml.change_in_capital_pd.columns[2]]}, 'years': [1]}],
+                          'IA.3.1': [{'diff_range': 'IA.3.1.A-B', 'years': [1, 2]}],
+                          'IA.3.2': [{'special': 'IA.3+IA.3.1', 'years': [1, 2]}],
+                          'IA.4': [{'value': {'data': self.f_xml.change_in_capital_pd.loc['IA.4.2'][
+                              self.f_xml.change_in_capital_pd.columns[2]]}, 'years': [1]}],
+                          'IA.4.1': [{'diff_range': 'IA.4.1.A-B', 'years': [1, 2]}],
+                          'IA.4.2': [{'special': 'IA.4+IA.4.1', 'years': [1, 2]}],
+                          'IA.5': [{'value': {'data': self.f_xml.change_in_capital_pd.loc['IA.5.7'][
+                                                          self.f_xml.change_in_capital_pd.columns[2]] +
+                                                      self.f_xml.change_in_capital_pd.loc['IA.6'][
+                                                          self.f_xml.change_in_capital_pd.columns[2]]}, 'years': [1]},
+                                   {'special': 'IA.5.1-IA.5.4', 'years': [1, 2]}],
+                          'IA.5.2': [{'special': 'IA.5.1+IA.5.1.1+IA.5.1.2', 'years': [1, 2]}],
+                          'IA.5.3': [{'special': 'IA.5.2+IA.5.2.A-IA.5.2.B', 'years': [1, 2]}],
+                          'IA.5.5': [{'special': 'IA.5.4+IA.5.4.1-IA.5.4.2', 'years': [1, 2]}],
+                          'IA.5.6': [{'special': 'IA.5.5+IA.5.5.A-IA.5.5.B', 'years': [1, 2]}],
+                          'IA.5.7': [{'special': 'IA.5.3-IA.5.6', 'years': [1, 2]}],
+                          'IA.6': [{'diff_range': 'IA.6.A-C', 'years': [1, 2]}],
+                          'IA.6.A': [
+                              {'value': {'index': 'L', 'source': self.f_xml.gain_and_loses_pd}, 'years': [1, 2]}],
+                          'II': [{'special': 'IA.1.2+IA.2.2+IA.3.2+IA.4.2+IA.5.7+IA.6', 'years': [1, 2]}]},
+                      'capital_flow': {
+                          'A.I': [
+                              {'value': {'index': 'IA.6', 'source': self.f_xml.change_in_capital_pd}, 'years': [1, 2]}],
+                          'A.II': [{'range': 'A.II.1-10', 'years': [1, 2]}],
+                          'A.II.5': [{'value': {
+                              'data': self.f_xml.passives_pd.loc['B.I'][self.f_xml.passives_pd.columns[1]] -
+                                      self.f_xml.passives_pd.loc['B.I'][self.f_xml.passives_pd.columns[2]]},
+                              'years': [1]}],
+                          'A.II.6': [{'value': {
+                              'data': -(self.f_xml.assets_pd.loc['B.I'][self.f_xml.assets_pd.columns[1]] -
+                                        self.f_xml.assets_pd.loc['B.I'][self.f_xml.assets_pd.columns[2]])},
+                              'years': [1]}],
+                          'A.II.7': [{'value': {
+                              'data': -((self.f_xml.assets_pd.loc['A.III'][self.f_xml.assets_pd.columns[1]] +
+                                         self.f_xml.assets_pd.loc['B.II'][self.f_xml.assets_pd.columns[1]]) - (
+                                                self.f_xml.assets_pd.loc['A.III'][self.f_xml.assets_pd.columns[2]] +
+                                                self.f_xml.assets_pd.loc['B.II'][
+                                                    self.f_xml.assets_pd.columns[2]]))},
+                              'years': [1]}],
+                          'A.II.8': [{'value': {
+                              'data': -((self.f_xml.passives_pd.loc['B.III'][self.f_xml.passives_pd.columns[1]] -
+                                         self.f_xml.passives_pd.loc['B.III.3.A'][self.f_xml.passives_pd.columns[1]]) - (
+                                                self.f_xml.passives_pd.loc['B.III'][self.f_xml.passives_pd.columns[2]] -
+                                                self.f_xml.passives_pd.loc['B.III.3.A'][
+                                                    self.f_xml.passives_pd.columns[2]]))},
+                              'years': [1]}],
+                          'A.II.9': [{'value': {
+                              'data': ((self.f_xml.passives_pd.loc['B.IV'][self.f_xml.passives_pd.columns[1]] -
+                                        self.f_xml.passives_pd.loc['B.IV'][self.f_xml.passives_pd.columns[2]]) - (
+                                               self.f_xml.assets_pd.loc['B.IV'][self.f_xml.assets_pd.columns[1]] -
+                                               self.f_xml.assets_pd.loc['B.IV'][
+                                                   self.f_xml.assets_pd.columns[2]]) - (
+                                               self.f_xml.assets_pd.loc['A.V'][self.f_xml.assets_pd.columns[1]] -
+                                               self.f_xml.assets_pd.loc['A.V'][self.f_xml.assets_pd.columns[2]]))},
+                              'years': [1]}],
+                          'A.III': [{'range': 'A.I-II', 'years': [1, 2]}],
+                          'B.I': [{'range': 'B.I.1-4', 'years': [1, 2]}],
+                          'B.I.3': [{'range': 'B.I.3.A-B', 'years': [1, 2]}],
+                          'B.I.3.B': [{'range': 'B.I.3.B.1-5', 'years': [1, 2]}],
+                          'B.II': [{'range': 'B.II.1-4', 'years': [1, 2]}],
+                          'B.II.3': [{'range': 'B.II.3.A-B', 'years': [1, 2]}],
+                          'B.II.3.B': [{'range': 'B.II.3.B.1-2', 'years': [1, 2]}],
+                          'B.III': [{'diff_range': 'B.I-II', 'years': [1, 2]}],
+                          'C.I': [{'range': 'C.I.1-4', 'years': [1, 2]}],
+                          'C.II': [{'range': 'C.II.1-9', 'years': [1, 2]}],
+                          'C.III': [{'diff_range': 'C.I-II', 'years': [1, 2]}],
+                          'D': [{'special': 'A.III+B.III+C.III', 'years': [1, 2]},
+                                {'special': 'E+E.1', 'years': [1, 2]}],
+                          'E': [{'value': {
+                              'data': self.f_xml.assets_pd.loc['B.III.1.C'][self.f_xml.assets_pd.columns[1]] -
+                                      self.f_xml.assets_pd.loc['B.III.1.C'][self.f_xml.assets_pd.columns[2]]},
+                              'years': [1]}],
+                          'F': [
+                              {'value': {'data': self.f_xml.capital_flow_pd.loc['G'][
+                                  self.f_xml.capital_flow_pd.columns[2]]}, 'years': [1]}],
+                          'G': [{'special': 'D+F', 'years': [1, 2]}]},
+                      'additional_info': {
+                          'A_RB': [
+                              {'value': {
+                                  'data': self.f_xml.gain_and_loses_pd.loc['I'][
+                                      self.f_xml.gain_and_loses_pd.columns[1]]}, 'years': [1]}],
+                          'A_RP': [
+                              {'value': {
+                                  'data': self.f_xml.gain_and_loses_pd.loc['I'][
+                                      self.f_xml.gain_and_loses_pd.columns[2]]}, 'years': [1]}],
+
                       }
                       }
 
@@ -868,9 +1008,6 @@ class FinancialXMLRulesCheck:
         else:
             return []
 
-    def decimal_to_bool(self, dec_val):
-        return dec_val == 0.0
-
     def create_full_range_list(self, index_range):
         index_elements = index_range.split('.')
         range_str = index_elements[-1]
@@ -885,7 +1022,8 @@ class FinancialXMLRulesCheck:
         rule = self.rules[subset_key][index]
         res_list = []
 
-        picked_pd = self.pds[subset_key]['pd']
+        picked_pd = pd.DataFrame(self.pds[subset_key]['pd'])
+        p_pd_columns = list(picked_pd.columns)
 
         for list_elem in rule:
             year_sum = []
@@ -895,34 +1033,48 @@ class FinancialXMLRulesCheck:
                     range_list = self.create_full_range_list(index_range)
                     sum_val = Decimal(0.0)
                     for dec_val_ind in range_list:
-                        sum_val += picked_pd.loc[dec_val_ind][picked_pd.columns[year]]
-                    sum_val = picked_pd.loc[index][picked_pd.columns[year]] - sum_val
-                    year_sum.append(self.decimal_to_bool(sum_val))
+                        sum_val += picked_pd.loc[dec_val_ind][p_pd_columns[year]]
+                    sum_val = picked_pd.loc[index][p_pd_columns[year]] - sum_val
                 elif 'value' in list_elem:
-                    value_idx = list_elem['value']['index']
-                    value_src = list_elem['value']['source']
-                    sum_val = picked_pd.loc[index][picked_pd.columns[year]] - value_src.loc[value_idx][value_src.columns[year]]
-                    year_sum.append(self.decimal_to_bool(sum_val))
+                    if 'data' in list_elem['value']:
+                        sum_val = picked_pd.loc[index][p_pd_columns[year]] - list_elem['value']['data']
+                    else:
+                        value_idx = list_elem['value']['index']
+                        value_src = list_elem['value']['source']
+                        value_src_cols = list(value_src.columns)
+                        sum_val = picked_pd.loc[index][p_pd_columns[year]] - value_src.loc[value_idx][value_src_cols[year]]
                 elif 'diff_range' in list_elem:
                     index_range = list_elem['diff_range']
                     range_list = self.create_full_range_list(index_range)
-                    sum_val = picked_pd.loc[range_list[0]][picked_pd.columns[year]]
+                    sum_val = picked_pd.loc[range_list[0]][p_pd_columns[year]]
                     for dec_val_ind in range_list[1:]:
-                        sum_val -= picked_pd.loc[dec_val_ind][picked_pd.columns[year]]
-                    sum_val = picked_pd.loc[index][picked_pd.columns[year]] - sum_val
-                    year_sum.append(self.decimal_to_bool(sum_val))
+                        sum_val -= picked_pd.loc[dec_val_ind][p_pd_columns[year]]
+                    sum_val = picked_pd.loc[index][p_pd_columns[year]] - sum_val
                 elif 'special' in list_elem:
+                    signs = '+-'
                     operations = list_elem['special']
-                    indexes = [i for i in operations if i.isalpha()]
-                    operators = [o for o in operations if o in '+-']
 
-                    result = picked_pd.loc[indexes[0]][picked_pd.columns[year]]
+                    pd_ind = ''
+                    indexes = []
+                    operators = []
+                    for char in operations:
+                        if char in signs:
+                            indexes.append(pd_ind)
+                            pd_ind = ''
+                            operators.append(char)
+                            continue
+                        pd_ind += char
+                    indexes.append(pd_ind)
+                    year_col = p_pd_columns[year]
+                    first_index = indexes[0]
+                    sum_val = picked_pd.loc[first_index][year_col]
                     for i in range(len(operators)):
                         if operators[i] == '+':
-                            result += picked_pd.loc[indexes[i + 1]][picked_pd.columns[year]]
+                            sum_val += picked_pd.loc[indexes[i + 1]][year_col]
                         elif operators[i] == '-':
-                            result -= picked_pd.loc[indexes[i + 1]][picked_pd.columns[year]]
-                    year_sum.append(self.decimal_to_bool(result))
+                            sum_val -= picked_pd.loc[indexes[i + 1]][year_col]
+                    sum_val = picked_pd.loc[index][year_col] - sum_val
+                year_sum.append(decimal_to_bool(sum_val))
 
             res_list.append(year_sum)
 
@@ -930,9 +1082,12 @@ class FinancialXMLRulesCheck:
 
     def to_excel(self, out_file):
         workbook = xlsxwriter.Workbook(out_file)
+        workbook.formats[0].set_font_size(10)
         worksheet = workbook.add_worksheet()
         workbook, header_cell_format, normal_cell_format, number_format = excel_style_format(workbook)
-        col_max_size = [0, 0, 0]
+        # Sets first columns width
+        worksheet.set_column(0, 0, 100)
+        col_max_size = [0, 0, 0, 0]
 
         i = 0
         for rule_key in self.rules.keys():
@@ -945,14 +1100,14 @@ class FinancialXMLRulesCheck:
                 worksheet.write(i, idx, col, header_cell_format)
             i += 1
             j = 0
-            col_max_size = check_cols_max_size(col_max_size, cols)
+            col_max_size = check_cols_max_size(col_max_size, cols[:3])
             for index, row in df.iterrows():
                 if df_border_list[j - 2] == 1:
                     cell_format = header_cell_format
                 else:
                     cell_format = normal_cell_format
 
-                if row[cols[1]] is None or row[cols[2]] is None:
+                if row[cols[1]] is None:# or row[cols[2]] is None:
                     worksheet.write(i, 0, "", cell_format)
                     worksheet.write(i, 1, "", cell_format)
                     worksheet.write(i, 2, "", cell_format)
@@ -961,22 +1116,41 @@ class FinancialXMLRulesCheck:
                     prefix = f"{index}. " if len(index) > 0 else ""
                     occurences = prefix.count('.')
                     prefix = ' ' * occurences + prefix
-                    worksheet.write(i, 0, f"{prefix}{row[cols[0]]}", cell_format)
-                    worksheet.write_number(i, 1, row[cols[1]], number_format)
-                    worksheet.write_number(i, 2, row[cols[2]], number_format)
-                    col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
+                    first_cell_text = f"{prefix}{row[cols[0]]}"
+                    worksheet.write(i, 0, first_cell_text, cell_format)
+                    for c in range(1, len(cols)):
+                        cell_data = row[cols[c]]
+                        if type(cell_data) == Decimal:
+                            worksheet.write_number(i, c, cell_data, number_format)
+                        else:
+                            worksheet.write(i, c, cell_data)
+
+                    height = 20  # default height
+                    if len(first_cell_text) > 75:
+                        # If there is more than one line of wrapped text, adjust the row height
+                        height = height * 2
+                    # Set the row height
+                    worksheet.set_row(i, height)
+
+                    # worksheet.write_number(i, 2, row[cols[2]], number_format)
+                    # col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
+                    col_list = [it[0] for it in row[cols].items()]
+                    col_max_size = check_cols_max_size(col_max_size, col_list)
 
                     if index in self.rules[rule_key]:
-                        sum_check = self.rule_check(index, rule_key)
-                        for idx, s_check in enumerate(sum_check):
+                        sum_res = self.rule_check(index, rule_key)
+                        for idx, s_val in enumerate(sum_res):
                             # worksheet.write_number(i, 2 * idx + 3, s_check[0], number_format)
                             # worksheet.write_number(i, 2 * idx + 4, s_check[1], number_format)
-                            worksheet.write_boolean(i, 2 * idx + 3, s_check[0])
-                            worksheet.write_boolean(i, 2 * idx + 4, s_check[1])
+                            for s_id, s_check in enumerate(s_val):
+                                worksheet.write_boolean(i, 2 * idx + len(cols) + s_id, s_check)
+                            # worksheet.write_boolean(i, 2 * idx + 4, s_check[1])
                 i += 1
                 j += 1
 
         for idx, col_siz in enumerate(col_max_size):
+            if idx == 0:
+                col_siz = col_siz // 2
             worksheet.set_column(idx, idx, col_siz)
 
         workbook.close()

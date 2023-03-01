@@ -46,6 +46,8 @@ class Version(object):
         if patch_val + 1 >= 10:
             patch_val = 0
             minor_val += 1
+        else:
+            patch_val += 1
 
         self.version_np[0] = major_val
         self.version_np[1] = minor_val
@@ -77,4 +79,5 @@ class Version(object):
 
 if __name__ == "__main__":
     ver = Version()
-    ver.set_version(0, 0, 1, 0)
+    # ver.set_version(0, 0, 1, 0)
+    ver.up_patch()
