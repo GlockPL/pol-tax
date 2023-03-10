@@ -35,7 +35,6 @@ class MainGUI(QMainWindow):
         self.resources_filepath = Path("./resources/").resolve()
         MainWindow = self
 
-
         self.f_xml = None
         # Icons
         self.excel_icon = QIcon(QPixmap(":/icons/excel_icon.jpg"))
@@ -79,6 +78,7 @@ class MainGUI(QMainWindow):
         self.gridLayout_2 = QGridLayout(self.structureTab)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
         self.treeWidget = QTreeWidget(self.structureTab)
+        QTreeWidgetItem(self.treeWidget)
         QTreeWidgetItem(self.treeWidget)
         QTreeWidgetItem(self.treeWidget)
         QTreeWidgetItem(self.treeWidget)
@@ -162,23 +162,18 @@ class MainGUI(QMainWindow):
         if self.xml_filepath.suffix == '.xml':
             self.f_xml = FinancialXMLParser(str(self.xml_filepath), self.app_settings)
 
-            hash = self.get_hash_path(self.xml_filepath)
+            hash_val = self.get_hash_path(self.xml_filepath)
 
-            aktywa_excel_path = f'{self.app_settings.get_excel_dir()}/{hash}_Aktywa.xlsx'
-            pasywa_excel_path = f'{self.app_settings.get_excel_dir()}/{hash}_Pasywa.xlsx'
-            introduction_excel_path = f'{self.app_settings.get_excel_dir()}/{hash}_Wprowadzenie.xlsx'
-            gains_and_loses_excel_path = f'{self.app_settings.get_excel_dir()}/{hash}_RZiS.xlsx'
-            change_in_capital_excel_path = f'{self.app_settings.get_excel_dir()}/{hash}_ZestZmianWKapitale.xlsx'
-            capital_flow_excel_path = f'{self.app_settings.get_excel_dir()}/{hash}_RachPrzeplywow.xlsx'
-            additional_info_excel_path = f'{self.app_settings.get_excel_dir()}/{hash}_DodatkoweInfo.xlsx'
+            aktywa_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_Aktywa.xlsx'
+            pasywa_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_Pasywa.xlsx'
+            introduction_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_Wprowadzenie.xlsx'
+            gains_and_loses_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_RZiS.xlsx'
 
             self.f_xml.generate_assets_excel(aktywa_excel_path)
             self.f_xml.generate_passives_excel(pasywa_excel_path)
             self.f_xml.generate_introduction_excel_from_pd(introduction_excel_path)
             self.f_xml.generate_gains_and_loses_excel(gains_and_loses_excel_path)
-            self.f_xml.generate_change_in_capital_excel(change_in_capital_excel_path)
-            self.f_xml.generate_capital_flow_excel(capital_flow_excel_path)
-            self.f_xml.generate_additional_info_excel(additional_info_excel_path)
+
             pdf_path = self.f_xml.extract_embedded_files()
 
             self.clear_second_level_tree()
@@ -195,16 +190,25 @@ class MainGUI(QMainWindow):
             self.add_elements_to_table(3, gains_and_loses_excel_path,
                                        {'dataframe': self.f_xml.gain_and_loses_pd,
                                         'border_list': self.f_xml.gain_and_loses_border_list})
-            self.add_elements_to_table(4, change_in_capital_excel_path,
-                                       {'dataframe': self.f_xml.change_in_capital_pd,
-                                        'border_list': self.f_xml.change_in_capital_border_list})
-            self.add_elements_to_table(5, capital_flow_excel_path,
-                                       {'dataframe': self.f_xml.capital_flow_pd,
-                                        'border_list': self.f_xml.capital_flow_border_list})
-            self.add_elements_to_table(6, additional_info_excel_path,
-                                       {'dataframe': self.f_xml.additional_info_pd,
-                                        'border_list': self.f_xml.additional_info_border_list})
-            self.add_pdf_element_to_table(7, pdf_path)
+            if self.f_xml.change_in_capital_pd is not None:
+                change_in_capital_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_ZestZmianWKapitale.xlsx'
+                self.f_xml.generate_change_in_capital_excel(change_in_capital_excel_path)
+                self.add_elements_to_table(4, change_in_capital_excel_path,
+                                           {'dataframe': self.f_xml.change_in_capital_pd,
+                                            'border_list': self.f_xml.change_in_capital_border_list})
+            if self.f_xml.capital_flow_pd is not None:
+                capital_flow_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_RachPrzeplywow.xlsx'
+                self.f_xml.generate_capital_flow_excel(capital_flow_excel_path)
+                self.add_elements_to_table(5, capital_flow_excel_path,
+                                           {'dataframe': self.f_xml.capital_flow_pd,
+                                            'border_list': self.f_xml.capital_flow_border_list})
+            if self.f_xml.additional_info_pd is not None:
+                additional_info_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_DodatkoweInfo.xlsx'
+                self.f_xml.generate_additional_info_excel(additional_info_excel_path)
+                self.add_elements_to_table(6, additional_info_excel_path,
+                                           {'dataframe': self.f_xml.additional_info_pd,
+                                            'border_list': self.f_xml.additional_info_border_list})
+            self.add_pdf_element_to_table(8, pdf_path)
         else:
             logging.debug("Path to xml not setup!")
 
@@ -234,9 +238,12 @@ class MainGUI(QMainWindow):
     def clear_second_level_tree(self):
         for i in range(self.treeWidget.topLevelItemCount()):
             # Get the top-level item
-            top_level_item = self.treeWidget.topLevelItem(i)
-            # Remove all its child items
-            top_level_item.takeChildren()
+            self.clear_children_at_idx(i)
+
+    def clear_children_at_idx(self, idx):
+        top_level_item = self.treeWidget.topLevelItem(idx)
+        # Remove all its child items
+        top_level_item.takeChildren()
 
     def add_elements_to_table(self, item_idx, excel_path, objects_dict):
         item = self.treeWidget.topLevelItem(item_idx)
@@ -267,7 +274,13 @@ class MainGUI(QMainWindow):
         pdf_item.setData(0, Qt.UserRole, str(pdf_path))
         pdf_item.setIcon(0, self.pdf_icon)
 
-        # self.treeWidget.itemClicked.connect(self.pdf_item_clicked)
+    def add_excel_element_to_table(self, item_idx, excel_path):
+        item = self.treeWidget.topLevelItem(item_idx)
+        # Create the "table" item and add it to the "Wprowadzenie" item
+        pdf_item = QTreeWidgetItem(item)
+        pdf_item.setText(0, "Excel")
+        pdf_item.setData(0, Qt.UserRole, str(excel_path))
+        pdf_item.setIcon(0, self.excel_icon)
 
     def show_about(self):
         about_dialog = AboutDialog(self)
@@ -293,8 +306,13 @@ class MainGUI(QMainWindow):
 
     def xml_summation_check(self):
         if self.f_xml is not None:
+            tree_id_for_summation = 7
+            self.clear_children_at_idx(tree_id_for_summation)
+            hash_val = self.get_hash_path(self.xml_filepath)
             f_xml_rules = FinancialXMLRulesCheck(self.f_xml)
-            f_xml_rules.to_excel(f'{self.app_settings.get_excel_dir()}/Aktywa_check.xlsx')
+            summation_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_summation.xlsx'
+            f_xml_rules.to_excel(summation_excel_path)
+            self.add_excel_element_to_table(tree_id_for_summation, summation_excel_path)
         else:
             logging.debug("Brak excela!")
 
@@ -356,7 +374,9 @@ class MainGUI(QMainWindow):
         ___qtreewidgetitem7 = self.treeWidget.topLevelItem(6)
         ___qtreewidgetitem7.setText(0, QCoreApplication.translate("MainWindow", u"Dodatkowe Informacje", None));
         ___qtreewidgetitem8 = self.treeWidget.topLevelItem(7)
-        ___qtreewidgetitem8.setText(0, QCoreApplication.translate("MainWindow", u"Za\u0142\u0105czone Pliki", None));
+        ___qtreewidgetitem8.setText(0, QCoreApplication.translate("MainWindow", u"Sumowanie", None));
+        ___qtreewidgetitem9 = self.treeWidget.topLevelItem(8)
+        ___qtreewidgetitem9.setText(0, QCoreApplication.translate("MainWindow", u"Za\u0142\u0105czone Pliki", None));
         self.treeWidget.setSortingEnabled(__sortingEnabled)
 
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.structureTab),
