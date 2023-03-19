@@ -2,8 +2,9 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Pol-Tax"
-#define MyAppVersion "0.0.3.1"
+#define MyAppVersion "0.0.3.3"
 #define MyAppExeName "pol-tax.exe"
+#define MyAppIcon "pol_tax_icon.ico"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -19,6 +20,10 @@ DisableProgramGroupPage=yes
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=pol_tax_icon.ico
+OutputBaseFilename=PolTax_0.0.3.3
+Uninstallable=yes
+UninstallDisplayIcon={#MyAppIcon}
 
 [Languages]
 Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"

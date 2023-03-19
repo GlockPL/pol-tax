@@ -41,7 +41,8 @@ if __name__ == "__main__":
     palette.setColor(QPalette.HighlightedText, QColor('#FFFFFF'))
 
     app = QApplication(sys.argv)
-    app.setPalette(palette)
+    # app.setPalette(palette)
+    app.setStyle('Fusion')
     settings = Settings()
 
     window = MainGUI(app, settings)

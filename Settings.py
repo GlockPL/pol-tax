@@ -1,3 +1,5 @@
+from PySide6.QtCore import QStandardPaths, QDir
+
 import pickle
 from pathlib import Path
 import atexit
@@ -11,6 +13,7 @@ class Settings:
     _extracted_files_dir = Path("./Extracted")
     # TODO: Paradox of opening setting file that can change it's location after closing
     _settings_path = Path("./settings.pickle")
+    _docs_path = Path(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)) / "pol-tax"
     _additional_keywords = {
         "KwotaA": "Kwota na dzień kończący bieżący rok obrotowy",
         "KwotaB": "Kwota na dzień kończący poprzedni rok obrotowy",
@@ -35,6 +38,10 @@ class Settings:
         if self.__initialized:
             return
         self.__initialized = True
+
+        self._excel_dir = self._docs_path.joinpath(self._excel_dir)
+        self._extracted_files_dir = self._docs_path.joinpath(self._extracted_files_dir)
+        self._settings_path = self._docs_path.joinpath(self._settings_path)
 
         if self._settings_path.exists():
             with self._settings_path.open(mode='rb') as settings_file:
