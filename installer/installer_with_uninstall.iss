@@ -17,7 +17,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
-OutputBaseFilename=Pol-Tax_0.0.3.3
+OutputBaseFilename=Pol-Tax_0.0.3.4
 SetupIconFile=E:\pol-tax\installer\pol_tax_icon.ico
 Compression=lzma
 SolidCompression=yes
@@ -39,6 +39,9 @@ Source: "E:\pol-tax\dist\pol-tax\*"; DestDir: "{app}"; Flags: ignoreversion recu
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Dirs]
+Name: "{userdocs}\pol-tax"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

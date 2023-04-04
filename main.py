@@ -5,6 +5,7 @@ from Widgets.MainWindow import MainGUI
 from Settings import Settings
 
 import sys
+import subprocess
 
 if __name__ == "__main__":
     # Define your colors
@@ -43,7 +44,12 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     # app.setPalette(palette)
     app.setStyle('Fusion')
-    settings = Settings()
+
+    try:
+        settings = Settings()
+    except PermissionError:
+        subprocess.run([sys.executable] + sys.argv, shell=True, elevation=True)
+        sys.exit(0)
 
     window = MainGUI(app, settings)
     window.show()
