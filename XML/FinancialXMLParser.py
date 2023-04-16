@@ -10,7 +10,7 @@ import base64
 import logging
 import string
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 # My files Import
 from XML.xsd_downloader import download_schema, XSD_DIR
@@ -40,7 +40,7 @@ def excel_style_format(workbook):
 
     header_cell_format = workbook.add_format()
     header_cell_format.set_pattern(1)  # This is optional when using a solid fill.
-    header_cell_format.set_bg_color('#d7e4bc')
+    header_cell_format.set_bg_color('#F8F8FF')
     header_cell_format.set_border(1)
     header_cell_format.set_bottom(2)
     header_cell_format.set_font_name(font_type)
@@ -51,8 +51,8 @@ def excel_style_format(workbook):
     return workbook, header_cell_format, normal_cell_format, number_format
 
 
-def col_size(string):
-    return len(str(string))# + 5
+def col_size(input_string):
+    return len(str(input_string))# + 5
 
 
 def check_cols_max_size(max_list, keys):
@@ -692,12 +692,17 @@ class FinancialXMLParser:
                 row += 1
                 for d in v[1:]:
                     for list_k, list_v in d.items():
-                        if border_count % 3 == 0:
+                        prefix = list_k.replace(f"{base_tag}_", "").replace("_", ".")
+                        prefix_items = prefix.split('.')
+                        # if border_count % 3 == 0:
+                        #     border_this_list.append(1)
+                        # else:
+                        #     border_this_list.append(0)
+                        if len(prefix_items) < 3:
                             border_this_list.append(1)
                         else:
                             border_this_list.append(0)
 
-                        prefix = list_k.replace(f"{base_tag}_", "").replace("_", ".")
                         df.loc[row] = [prefix, self.xsd_dict[list_k], list_v[self.cost_tag_1],
                                        list_v[self.cost_tag_2]]
                         row += 1
@@ -1179,7 +1184,9 @@ class FinancialXMLRulesCheck:
             for index, row in df.iterrows():
                 if df_border_list[j - 2] == 1:
                     cell_format = header_cell_format
+                    height = 40
                 else:
+                    height = 20
                     cell_format = normal_cell_format
 
                 if row[cols[1]] is None:  # or row[cols[2]] is None:
@@ -1200,7 +1207,6 @@ class FinancialXMLRulesCheck:
                         else:
                             worksheet.write(i, c, cell_data)
 
-                    height = 20  # default height
                     if len(first_cell_text) > 75:
                         # If there is more than one line of wrapped text, adjust the row height
                         height = height * 2
