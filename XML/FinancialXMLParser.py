@@ -498,10 +498,10 @@ class FinancialXMLParser:
                 border_list.append(1)
                 row += 1
                 for kk, vv in v.items():
-                    value_lst2 = [self.xsd_dict_orig[kk]]
+                    value_lst2 = [self.xsd_dict_orig[kk], None, None, None]
                     kk_index = kk.replace("_", ".")
-                    for cost_k, cost_v in vv.items():
-                        value_lst2.append(cost_v)
+                    for lp, (cost_k, cost_v) in enumerate(vv.items()):
+                        value_lst2[lp+1] = cost_v
                     df.loc[f"{k_index}_{kk_index}"] = value_lst2
                     border_list.append(0)
                     row += 1
@@ -602,7 +602,7 @@ class FinancialXMLParser:
 
         row = 1
         for k, v in d[main_key].items():
-            if re.match(r'^[A-Z]$', k):
+            if re.match(r'^(.)\1*$', k.strip()):
                 border_this_list.append(1)
             else:
                 border_this_list.append(0)
@@ -644,9 +644,9 @@ class FinancialXMLParser:
             worksheet.write(1, 2, "", header_cell_format)
             worksheet.merge_range(f'A2:C2', self.xsd_dict[title_row], header_cell_format)
             i += 1
-
+        j = 0
         for index, row in df.iterrows():
-            if df_border_list[i - 2] == 1:
+            if df_border_list[j] == 1:
                 cell_format = header_cell_format
             else:
                 cell_format = normal_cell_format
@@ -663,6 +663,7 @@ class FinancialXMLParser:
                 worksheet.write_number(i, 2, row[cols[2]], number_format)
                 col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
             i += 1
+            j += 1
 
         for idx, col_siz in enumerate(col_max_size):
             worksheet.set_column(idx, idx, col_siz)
@@ -1157,6 +1158,18 @@ class FinancialXMLRulesCheck:
 
         return res_list
 
+    def height_check(self, text, worksheet, index):
+        char_line_limit = 75
+        wrap_text_count = len(text)
+        height = 20
+        if wrap_text_count > char_line_limit:
+            # If there is more than one line of wrapped text, adjust the row height
+            times = wrap_text_count // char_line_limit
+            height = height * (times + 1)
+        # Set the row height
+        worksheet.set_row(index, height)
+        return worksheet
+
     def to_excel(self, out_file):
         workbook = xlsxwriter.Workbook(out_file)
         workbook.formats[0].set_font_size(10)
@@ -1178,11 +1191,12 @@ class FinancialXMLRulesCheck:
 
             for idx, col in enumerate(cols):
                 worksheet.write(i, idx, col, header_cell_format)
+            worksheet = self.height_check(cols[0], worksheet, i)
             i += 1
             j = 0
             col_max_size = check_cols_max_size(col_max_size, cols[:3])
             for index, row in df.iterrows():
-                if df_border_list[j - 2] == 1:
+                if df_border_list[j] == 1:
                     cell_format = header_cell_format
                     height = 40
                 else:
@@ -1193,7 +1207,8 @@ class FinancialXMLRulesCheck:
                     worksheet.write(i, 0, "", cell_format)
                     worksheet.write(i, 1, "", cell_format)
                     worksheet.write(i, 2, "", cell_format)
-                    worksheet.merge_range(i, 0, i, 2, row[cols[0]], header_cell_format)
+                    text_to_merge = row[cols[0]]
+                    worksheet.merge_range(i, 0, i, 2, text_to_merge, header_cell_format)
                 else:
                     prefix = f"{index}. " if len(index) > 0 else ""
                     occurrences = prefix.count('.')
@@ -1206,10 +1221,13 @@ class FinancialXMLRulesCheck:
                             worksheet.write_number(i, c, cell_data, number_format)
                         else:
                             worksheet.write(i, c, cell_data)
-
-                    if len(first_cell_text) > 75:
+                    char_line_limit = 75
+                    wrap_text_count = len(first_cell_text)
+                    if wrap_text_count > char_line_limit:
+                        height = 20
                         # If there is more than one line of wrapped text, adjust the row height
-                        height = height * 2
+                        times = wrap_text_count // char_line_limit
+                        height = height * (times + 1)
                     # Set the row height
                     worksheet.set_row(i, height)
 

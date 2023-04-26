@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Pol-Tax"
-#define MyAppVersion "0.0.3.3"
+#define MyAppVersion "0.0.3.6"
 #define MyAppExeName "pol-tax.exe"
 
 [Setup]
@@ -17,7 +17,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
-OutputBaseFilename=Pol-Tax_0.0.3.4
+OutputBaseFilename=Pol-Tax_0.0.3.6
 SetupIconFile=E:\pol-tax\installer\pol_tax_icon.ico
 Compression=lzma
 SolidCompression=yes
