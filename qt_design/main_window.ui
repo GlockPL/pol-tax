@@ -43,7 +43,7 @@
             </column>
             <item>
              <property name="text">
-              <string>Wprowadznie</string>
+              <string>Wprowadzenie</string>
              </property>
             </item>
             <item>
@@ -148,7 +148,7 @@
     <bool>false</bool>
    </attribute>
    <addaction name="actionSumowanie"/>
-   <addaction name="separator"/>
+   <addaction name="actionFolder"/>
   </widget>
   <action name="actionOpenXML">
    <property name="text">
@@ -180,6 +180,18 @@
    </property>
    <property name="text">
     <string>Sumowanie</string>
+   </property>
+  </action>
+  <action name="actionFolder">
+   <property name="icon">
+    <iconset>
+     <normaloff>../resources/folder_open_black_48dp.svg</normaloff>../resources/folder_open_black_48dp.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Folder</string>
+   </property>
+   <property name="toolTip">
+    <string>Otwórz folder z plika excel</string>
    </property>
   </action>
  </widget>

@@ -10,5 +10,6 @@
     <file alias="excel_icon.jpg">./excel_icon.jpg</file>
     <file alias="spreadsheet_icon.jpg">./spreadsheet-icon.jpg</file>
     <file alias="summarize_icon.svg">./summarize_black_48dp.svg</file>
+    <file alias="open_folder.svg">./folder_open_black_48dp.svg</file>
 </qresource>
 </RCC>
