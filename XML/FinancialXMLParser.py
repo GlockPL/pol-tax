@@ -67,10 +67,12 @@ def check_cols_max_size(max_list, keys):
 class FinancialXMLParser:
     def __init__(self, xml_path: str, app_settings: Settings):
         self.app_settings = app_settings
+        self.cost_tag = "Kwota"
+        self.cost_tag_set = set()
         self.cost_tag_1 = "KwotaA"
         self.cost_tag_2 = "KwotaB"
         self.cost_tag_3 = "KwotaC"
-        self.special_tags = ['PozycjaUszczegolawiajaca', 'NazwaPozycji']
+        self.special_tags = ['PozycjaUszczegolawiajaca']
         self.xml_path = xml_path
         self.tree = ET.parse(xml_path)
         self.root = self.tree.getroot()
@@ -253,9 +255,12 @@ class FinancialXMLParser:
                 new_d[main_tag][k] = Decimal(v)
                 continue
 
-            if any(k in x for x in self.special_tags):
+            if any(x in k for x in self.special_tags):
                 logging.debug(k)
-                # new_d[main_tag] = v
+                detail_item_tag = f"{main_tag}_{k}"
+                self.xsd_dict[detail_item_tag] = v['NazwaPozycji']
+                new_d[detail_item_tag] = {}
+                self.go_deeper(v['KwotyPozycji'], tag1, tag2, detail_item_tag, new_d)
                 continue
             #
             # if k is self.special_tags:
@@ -282,6 +287,9 @@ class FinancialXMLParser:
 
         gains_and_loses_dict_xml = {}
         gains_and_loses_dict_xml = self.xml_tag_to_dict(main_elem, gains_and_loses_dict_xml)
+        gains_and_loses_dict2 = {}
+        for k, v in gains_and_loses_dict_xml.items():
+            gains_and_loses_dict2 = self.reccur_cost_dict(k, v, main_tag, gains_and_loses_dict2)
 
         gains_and_loses_dict = self.flatten_dict_with_numbers(gains_and_loses_dict_xml, main_tag)
 
@@ -411,14 +419,36 @@ class FinancialXMLParser:
         return list_of_embedded_dicts
 
     def get_assets(self):
+
         level = 0
         # aktywa = defaultdict(list)
         aktywa = {}
+        aktywa2 = {'Aktywa': {}}
         for k, v in self.financial_balance_dict['Bilans']['Aktywa'].items():
             aktywa = self.travel_dict_reccur(k, v, aktywa, 'Aktywa', 'Aktywa', None, level)
+            aktywa2 = self.reccur_cost_dict(k, v, 'Aktywa', aktywa2)
 
         recombined_aktywa = self.join_two_subtags("KwotaA", "KwotaB", "Aktywa", aktywa)
         return recombined_aktywa
+
+    def reccur_cost_dict(self, key, value, up_key, main_dict):
+        if self.cost_tag in key:
+            if 'Koszta' not in main_dict[up_key]:
+                self.cost_tag_set.add(key)
+                main_dict[up_key]['Koszta'] = {key: Decimal(value)}
+            else:
+                main_dict[up_key]['Koszta'][key] = Decimal(value)
+        elif type(value) == dict:
+            main_dict[key] = {}
+            for k, v in value.items():
+                self.reccur_cost_dict(k, v, key, main_dict)
+        elif any(x in key for x in self.special_tags):
+                detail_item_tag = f"{up_key}_{key}"
+                self.xsd_dict[detail_item_tag] = value['NazwaPozycji']
+                main_dict[detail_item_tag] = {}
+                self.reccur_cost_dict(detail_item_tag, v['KwotyPozycji'], up_key, main_dict)
+
+        return main_dict
 
     def get_introduction(self):
         level = 0
