@@ -183,7 +183,7 @@ class MainGUI(QMainWindow):
             self.f_xml.generate_introduction_excel_from_pd(introduction_excel_path)
             self.f_xml.generate_gains_and_loses_excel(gains_and_loses_excel_path)
 
-            pdf_path = self.f_xml.extract_embedded_files()
+            pdf_paths = self.f_xml.extract_embedded_files()
 
             self.clear_second_level_tree()
 
@@ -217,7 +217,7 @@ class MainGUI(QMainWindow):
                 self.add_elements_to_table(6, additional_info_excel_path,
                                            {'dataframe': self.f_xml.additional_info_pd,
                                             'border_list': self.f_xml.additional_info_border_list})
-            self.add_pdf_element_to_table(8, pdf_path)
+            self.add_pdf_element_to_table(8, pdf_paths)
         else:
             logging.debug("Path to xml not setup!")
 
@@ -274,14 +274,15 @@ class MainGUI(QMainWindow):
         excel_item.setData(0, Qt.UserRole, str(excel_path))
         excel_item.setIcon(0, self.excel_icon)
 
-    def add_pdf_element_to_table(self, item_idx, pdf_path):
+    def add_pdf_element_to_table(self, item_idx, pdf_paths):
         item = self.treeWidget.topLevelItem(item_idx)
 
         # Create the "table" item and add it to the "Wprowadzenie" item
-        pdf_item = QTreeWidgetItem(item)
-        pdf_item.setText(0, "PDF")
-        pdf_item.setData(0, Qt.UserRole, str(pdf_path))
-        pdf_item.setIcon(0, self.pdf_icon)
+        for pdf_path in pdf_paths:
+            pdf_item = QTreeWidgetItem(item)
+            pdf_item.setText(0, "PDF")
+            pdf_item.setData(0, Qt.UserRole, str(pdf_path))
+            pdf_item.setIcon(0, self.pdf_icon)
 
     def add_excel_element_to_table(self, item_idx, excel_path):
         item = self.treeWidget.topLevelItem(item_idx)

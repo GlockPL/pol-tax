@@ -93,7 +93,7 @@ class FinancialXMLParser:
         # get pasywa dict
         self.passives_dict = self.get_equity_plus_liabilities()
         # Embedde file extraction
-        self.embedded_files_dict = self.get_embedded_files()
+        self.list_of_dict_embedded_files = self.get_embedded_files()
         # Aktywa pd
         self.assets_pd, self.assets_border_list = self.generate_assets_pd()
         # Pasywa pd
@@ -165,16 +165,39 @@ class FinancialXMLParser:
 
         return xsd_map
 
-    def recurse_search(self, root, tag):
+    def is_substring_at_end(self, substring, string):
+        substring_length = len(substring)
+        string_length = len(string)
+
+        if substring_length > string_length:
+            return False
+
+        end_substring = string[-substring_length:]
+
+        if end_substring == substring:
+            return True
+        else:
+            return False
+
+    def find_tags_with_name(self, root, tag):
+        tags = [element for element in root.iter() if element.tag.endswith(tag)]
+        return tags
+
+    def recurse_search(self, root, tag, full_search=False):
+        found_elems = []
         for elem in root:
-            if tag in elem.tag:
+            # if tag in elem.tag:
+            #     return elem
+            if self.is_substring_at_end(tag, elem.tag):
+                if full_search:
+                    found_elems.append(elem)
                 return elem
             else:
-                finded = self.recurse_search(elem, tag)
+                finded = self.recurse_search(elem, tag, full_search=full_search)
                 if finded is not None:
                     return finded
 
-        return None
+        return None if len(found_elems) == 0 else found_elems
 
     def search(self, root, tag):
         for elem in root:
@@ -379,10 +402,13 @@ class FinancialXMLParser:
         return dict_to_fill
 
     def get_embedded_files(self):
-        embedded_tag_elem = self.recurse_search(self.root, 'DodatkoweInformacjeIObjasnienia')
-        embedded_dict_xml = {}
-        embedded_dict_xml = self.xml_tag_to_dict(embedded_tag_elem, embedded_dict_xml)
-        return embedded_dict_xml
+        embedded_tag_elem = self.find_tags_with_name(self.root, 'DodatkoweInformacjeIObjasnienia')
+        list_of_embedded_dicts = []
+        for embedded_tag in embedded_tag_elem:
+            embedded_dict_xml = {}
+            embedded_dict_xml = self.xml_tag_to_dict(embedded_tag, embedded_dict_xml)
+            list_of_embedded_dicts.append(embedded_dict_xml)
+        return list_of_embedded_dicts
 
     def get_assets(self):
         level = 0
@@ -774,13 +800,14 @@ class FinancialXMLParser:
         workbook.close()
 
     def extract_embedded_files(self):
-        files_dict = self.embedded_files_dict['DodatkoweInformacjeIObjasnieniaJednostkaInna'][
-            'DodatkoweInformacjeIObjasnienia']
         files_list = []
-        for k, v in files_dict.items():
-            if k == "Plik":
-                files_list.append({'file_name': v['Nazwa'], 'content': v['Zawartosc']})
+        for tag_dict in self.list_of_dict_embedded_files:
+            files_dict = tag_dict['DodatkoweInformacjeIObjasnienia']
+            for k, v in files_dict.items():
+                if k == "Plik":
+                    files_list.append({'file_name': v['Nazwa'], 'content': v['Zawartosc']})
 
+        file_paths = []
         for elem in files_list:
             file_path = Path(elem['file_name'])
             concatenated_path = Path.joinpath(self.app_settings.get_extracted_dir(), file_path)
@@ -789,8 +816,9 @@ class FinancialXMLParser:
 
             with concatenated_path.open(mode='wb') as fh:
                 fh.write(message_bytes)
+            file_paths.append(concatenated_path)
 
-        return concatenated_path
+        return file_paths
 
 
 def decimal_to_bool(dec_val):
