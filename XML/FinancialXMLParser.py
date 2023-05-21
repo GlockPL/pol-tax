@@ -10,6 +10,7 @@ import base64
 import logging
 import string
 
+from abc import ABC, abstractmethod
 from decimal import Decimal, InvalidOperation
 
 # My files Import
@@ -52,7 +53,7 @@ def excel_style_format(workbook):
 
 
 def col_size(input_string):
-    return len(str(input_string))# + 5
+    return len(str(input_string)) - 2 # + 5
 
 
 def check_cols_max_size(max_list, keys):
@@ -62,6 +63,173 @@ def check_cols_max_size(max_list, keys):
             max_list[idx] = key_size
 
     return max_list
+
+
+class FinancialXMLParts:
+    cost_tag = "Kwota"
+    special_tags = ['PozycjaUszczegolawiajaca']
+
+    def __init__(self, main_key, xml_root, xsd_dict):
+        self.cost_tag_set = set()
+        self.main_key = main_key
+        self.xsd_dict = xsd_dict
+        self.xml_root = xml_root
+
+        self.tree_dict = self.get_dict_from_xml()
+        self.flatten_dict = self.flatten_xml_dict()
+        self.pd, self.border_list = self.get_pd()
+
+    def get_dict_from_xml(self):
+        tag_elem = self.find_tags_ending_with(self.main_key)
+        xml_dict = {}
+        xml_dict = self.xml_tag_to_dict(tag_elem, xml_dict)
+        return xml_dict
+
+    def flatten_xml_dict(self):
+        flatt_dict = {'Koszta': {}}
+        for k, v in self.tree_dict[self.main_key].items():
+            flatt_dict = self.recursive_cost_dict(k, v, None, flatt_dict)
+        ret_dict = {self.main_key: flatt_dict['Koszta']}
+        del flatt_dict['Koszta']
+        return ret_dict | flatt_dict
+
+    def get_pd(self):
+        border_this_list = []
+
+        column_names = ["key", ''] + [self.xsd_dict[x] for x in self.cost_tag_set]
+        df = pd.DataFrame(columns=column_names)
+
+        row = 1
+        for k, v in self.flatten_dict.items():
+            if re.match(r'^(.)\1*$', k.strip()):
+                border_this_list.append(1)
+            else:
+                border_this_list.append(0)
+            key_element = k.replace(f'{self.main_key}', '')
+            key_element = key_element[1:] if len(key_element) > 0 else key_element
+            key_element = key_element.replace('_', '.')
+
+            df.loc[row] = [key_element, self.xsd_dict[k]] + [v[x] for x in self.cost_tag_set]
+            row += 1
+
+        df.set_index("key", inplace=True)
+        return df, border_this_list
+
+    def get_excel(self, out_file_name):
+        title_row = None
+
+        workbook = xlsxwriter.Workbook(out_file_name)
+        worksheet = workbook.add_worksheet()
+        workbook, header_cell_format, normal_cell_format, number_format = excel_style_format(workbook)
+
+        cols = self.pd.columns
+        col_max_size = [0] * len(cols)
+
+        for idx, col in enumerate(cols):
+            worksheet.write(0, idx, col, header_cell_format)
+
+        col_max_size = check_cols_max_size(col_max_size, cols)
+        i = 1
+        if title_row is not None:
+            worksheet.write(1, 0, "", header_cell_format)
+            worksheet.write(1, 1, "", header_cell_format)
+            worksheet.write(1, 2, "", header_cell_format)
+            worksheet.merge_range(f'A2:C2', self.xsd_dict[title_row], header_cell_format)
+            i += 1
+        j = 0
+        for index, row in self.pd.iterrows():
+            if self.border_list[j] == 1:
+                cell_format = header_cell_format
+            else:
+                cell_format = normal_cell_format
+
+            if row[cols[1]] is None or row[cols[2]] is None:
+                worksheet.write(i, 0, "", cell_format)
+                worksheet.write(i, 1, "", cell_format)
+                worksheet.write(i, 2, "", cell_format)
+                worksheet.merge_range(i, 0, i, 2, row[cols[0]], header_cell_format)
+            else:
+                prefix = f"{index}. " if len(index) > 0 else ""
+                worksheet.write(i, 0, f"{prefix}{row[cols[0]]}", cell_format)
+                size_check_list = [f"{prefix}{row[cols[0]]}"]
+                for col_i in range(1, len(cols)):
+                    worksheet.write_number(i, col_i, row[cols[col_i]], number_format)
+                    size_check_list.append(row[cols[col_i]])
+                col_max_size = check_cols_max_size(col_max_size, size_check_list)
+            i += 1
+            j += 1
+
+        for idx, col_siz in enumerate(col_max_size):
+            worksheet.set_column(idx, idx, width=col_siz)
+
+        workbook.close()
+
+    def find_tags_ending_with(self, tag_name, full_search=False):
+        tags = []
+        for element in self.xml_root.iter():
+            if element.tag.endswith(tag_name):
+                if full_search:
+                    tags.append(element)
+                else:
+                    return element
+
+        return tags
+
+    def recursive_cost_dict(self, key, value, up_key, main_dict):
+        current_dict = main_dict['Koszta']
+        if up_key is not None:
+            current_dict = main_dict[up_key]
+
+        if self.cost_tag in key:
+            if key not in current_dict:
+                self.cost_tag_set.add(key)
+                current_dict[key] = Decimal(value)
+        elif type(value) == dict:
+            main_dict[key] = {}
+            for k, v in value.items():
+                self.recursive_cost_dict(k, v, key, main_dict)
+        elif any(x in key for x in self.special_tags):
+            detail_item_tag = f"{up_key}_{key}"
+            self.xsd_dict[detail_item_tag] = value['NazwaPozycji']
+            main_dict[detail_item_tag] = {}
+            self.recursive_cost_dict(detail_item_tag, value['KwotyPozycji'], up_key, main_dict)
+
+        return main_dict
+
+    def xml_tag_to_dict(self, xml_tag, xml_dict):
+        tag = xml_tag.tag
+        lastChar = tag.find('}')
+        if lastChar > 0:
+            tag = tag[lastChar + 1:]
+
+        text = xml_tag.text.strip() if xml_tag.text is not None else ""
+        if text == "":
+            xml_dict[tag] = {}
+        else:
+            xml_dict[tag] = text
+
+        for elem in xml_tag:
+            xml_dict[tag] = self.xml_tag_to_dict(elem, xml_dict[tag])
+
+        return xml_dict
+
+
+# class Assets(FinancialXML):
+#     def __init__(self, xml_root, xsd_dict):
+#         super().__init__(xml_root, xsd_dict)
+#         self.main_key = "Aktywa"
+#
+#     def get_dict_from_xml(self):
+#
+#
+#     def flatten_xml_dict(self):
+#         pass
+#
+#     def get_pd(self):
+#         pass
+#
+#     def get_excel(self):
+#         pass
 
 
 class FinancialXMLParser:
@@ -88,6 +256,9 @@ class FinancialXMLParser:
         # get introduction
         self.introduction_dict = self.find_introduction()
         self.introduction_pd, self.introduction_border_list = self.generate_introduction_pd()
+        self.assets_obj = FinancialXMLParts("Aktywa", self.root, self.xsd_dict)
+        # mhmm = ass.flatten_dict
+        # mhmm_pd = ass.pd
         # get bilans
         self.financial_balance_dict = self.find_bilans_and_parse()
         # get aktywa dict
@@ -97,7 +268,8 @@ class FinancialXMLParser:
         # Embedde file extraction
         self.list_of_dict_embedded_files = self.get_embedded_files()
         # Aktywa pd
-        self.assets_pd, self.assets_border_list = self.generate_assets_pd()
+        # self.assets_pd, self.assets_border_list = self.generate_assets_pd()
+        self.assets_pd, self.assets_border_list = self.assets_obj.get_pd()
         # Pasywa pd
         self.passives_pd, self.passives_border_list = self.generate_passives_pd()
         # Rachunek zysków i start
@@ -388,7 +560,6 @@ class FinancialXMLParser:
                 pass
         return data
 
-
     def travel_dict_reccur(self, key, value, dict_to_fill, upper_key, level_0_key=None, level_1_key=None, level=0):
         if type(value) is dict:
             for k, v in value.items():
@@ -443,10 +614,10 @@ class FinancialXMLParser:
             for k, v in value.items():
                 self.reccur_cost_dict(k, v, key, main_dict)
         elif any(x in key for x in self.special_tags):
-                detail_item_tag = f"{up_key}_{key}"
-                self.xsd_dict[detail_item_tag] = value['NazwaPozycji']
-                main_dict[detail_item_tag] = {}
-                self.reccur_cost_dict(detail_item_tag, v['KwotyPozycji'], up_key, main_dict)
+            detail_item_tag = f"{up_key}_{key}"
+            self.xsd_dict[detail_item_tag] = value['NazwaPozycji']
+            main_dict[detail_item_tag] = {}
+            self.reccur_cost_dict(detail_item_tag, v['KwotyPozycji'], up_key, main_dict)
 
         return main_dict
 
@@ -557,7 +728,7 @@ class FinancialXMLParser:
                     value_lst2 = [self.xsd_dict_orig[kk], None, None, None]
                     kk_index = kk.replace("_", ".")
                     for lp, (cost_k, cost_v) in enumerate(vv.items()):
-                        value_lst2[lp+1] = cost_v
+                        value_lst2[lp + 1] = cost_v
                     df.loc[f"{k_index}_{kk_index}"] = value_lst2
                     border_list.append(0)
                     row += 1
@@ -582,14 +753,15 @@ class FinancialXMLParser:
         i = 0
         for index, row in self.additional_info_pd.iterrows():
             if self.additional_info_border_list[i] == 1:
-                worksheet.write(i+1, 0, row[cols[0]], header_cell_format)
+                worksheet.write(i + 1, 0, row[cols[0]], header_cell_format)
                 col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], "", "", ""])
             else:
-                worksheet.write(i+1, 0, row[cols[0]], normal_cell_format)
-                worksheet.write(i+1, 1, row[cols[1]], number_format)
-                worksheet.write(i+1, 2, row[cols[2]], number_format)
-                worksheet.write(i+1, 3, row[cols[3]], number_format)
-                col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]], row[cols[3]]])
+                worksheet.write(i + 1, 0, row[cols[0]], normal_cell_format)
+                worksheet.write(i + 1, 1, row[cols[1]], number_format)
+                worksheet.write(i + 1, 2, row[cols[2]], number_format)
+                worksheet.write(i + 1, 3, row[cols[3]], number_format)
+                col_max_size = check_cols_max_size(col_max_size,
+                                                   [row[cols[0]], row[cols[1]], row[cols[2]], row[cols[3]]])
             i += 1
 
         for idx, col_siz in enumerate(col_max_size):
@@ -630,7 +802,8 @@ class FinancialXMLParser:
         self.generate_excel_from_numbers_pd(self.passives_pd, self.passives_border_list, out_file_name)
 
     def generate_assets_excel(self, out_file_name):
-        self.generate_excel_from_numbers_pd(self.assets_pd, self.assets_border_list, out_file_name)
+        # self.generate_excel_from_numbers_pd(self.assets_pd, self.assets_border_list, out_file_name)
+        self.assets_obj.get_excel(out_file_name)
 
     def generate_assets_pd(self):
         return self.generate_costs_pd(self.assets_dict, base_tag="Aktywa")
@@ -796,8 +969,8 @@ class FinancialXMLParser:
         del temp_dict['Koszta']
         col_max_size = [0, 0, 0]
         col_max_size = check_cols_max_size(col_max_size,
-                                                [self.xsd_dict[base_tag], self.xsd_dict[self.cost_tag_1],
-                                                 self.xsd_dict[self.cost_tag_2]])
+                                           [self.xsd_dict[base_tag], self.xsd_dict[self.cost_tag_1],
+                                            self.xsd_dict[self.cost_tag_2]])
         border_count = 0
         for k, v in temp_dict.items():
             if type(v) == list:
@@ -815,8 +988,8 @@ class FinancialXMLParser:
                             formt = cell_format
 
                         col_max_size = check_cols_max_size(col_max_size,
-                                                                [self.xsd_dict[list_k], list_v[self.cost_tag_1],
-                                                                 list_v[self.cost_tag_2]])
+                                                           [self.xsd_dict[list_k], list_v[self.cost_tag_1],
+                                                            list_v[self.cost_tag_2]])
                         prefix = list_k.replace(f"{base_tag}_", "").replace("_", ".")
                         worksheet.write(row, col, f"{prefix} {self.xsd_dict[list_k]}", formt)
                         worksheet.write_number(row, col + 1, list_v[self.cost_tag_1], number_format)
@@ -1165,9 +1338,9 @@ class FinancialXMLRulesCheck:
                         value_src = list_elem['value']['source']
                         value_src_cols = list(value_src.columns)
                         sum_val = checked_value - self.get_pd_val(value_src,
-                                                                                                          value_idx,
-                                                                                                          picked_year,
-                                                                                                          value_src_cols)
+                                                                  value_idx,
+                                                                  picked_year,
+                                                                  value_src_cols)
                         # sum_val = picked_pd.loc[index][p_pd_columns[year]] - value_src.loc[value_idx][value_src_cols[picked_year]]
                 elif 'diff_range' in list_elem:
                     # Podobnie jak w range, tylko tutaj jest ciąg liczb odejmowanych od siebie
@@ -1198,7 +1371,8 @@ class FinancialXMLRulesCheck:
                     indexes.append(pd_ind)
                     # year_col = p_pd_columns[year]
                     first_index = indexes[0]
-                    sum_val = self.get_pd_val(picked_pd, first_index, year, p_pd_columns)#picked_pd.loc[first_index][year_col]
+                    sum_val = self.get_pd_val(picked_pd, first_index, year,
+                                              p_pd_columns)  # picked_pd.loc[first_index][year_col]
                     for i in range(len(operators)):
                         if operators[i] == '+':
                             # sum_val += picked_pd.loc[indexes[i + 1]][year_col]
