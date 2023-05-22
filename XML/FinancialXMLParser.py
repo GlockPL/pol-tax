@@ -10,7 +10,6 @@ import base64
 import logging
 import string
 
-from abc import ABC, abstractmethod
 from decimal import Decimal, InvalidOperation
 
 # My files Import
@@ -230,24 +229,6 @@ class FinancialXMLParts:
             xml_dict[tag] = self.xml_tag_to_dict(elem, xml_dict[tag])
 
         return xml_dict
-
-
-# class Assets(FinancialXML):
-#     def __init__(self, xml_root, xsd_dict):
-#         super().__init__(xml_root, xsd_dict)
-#         self.main_key = "Aktywa"
-#
-#     def get_dict_from_xml(self):
-#
-#
-#     def flatten_xml_dict(self):
-#         pass
-#
-#     def get_pd(self):
-#         pass
-#
-#     def get_excel(self):
-#         pass
 
 
 class FinancialXMLParser:
