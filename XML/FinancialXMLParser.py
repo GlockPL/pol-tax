@@ -69,23 +69,35 @@ class FinancialXMLParts:
     cost_tag = "Kwota"
     special_tags = ['PozycjaUszczegolawiajaca']
 
-    def __init__(self, main_key, xml_root, xsd_dict):
+    def __init__(self, main_keys, xml_root, xsd_dict):
         self.cost_tag_set = set()
-        self.main_key = main_key
         self.xsd_dict = xsd_dict
         self.xml_root = xml_root
+        self.tag_element, self.main_key = self.determine_main_key_existance(main_keys)
 
         self.tree_dict = self.get_dict_from_xml()
         self.flatten_dict = self.flatten_xml_dict()
         self.pd, self.border_list = self.get_pd()
 
+    def determine_main_key_existance(self, main_keys):
+        for key in main_keys:
+            tag_elem = self.find_tags_ending_with(key)
+            if len(tag_elem) > 0:
+                return tag_elem, key
+        return None, None
+
     def get_dict_from_xml(self):
-        tag_elem = self.find_tags_ending_with(self.main_key)
+        if self.tag_element is None:
+            return None
+
         xml_dict = {}
-        xml_dict = self.xml_tag_to_dict(tag_elem, xml_dict)
+        xml_dict = self.xml_tag_to_dict(self.tag_element, xml_dict)
         return xml_dict
 
     def flatten_xml_dict(self):
+        if self.tree_dict is None:
+            return None
+
         flatt_dict = {'Koszta': {}}
         for k, v in self.tree_dict[self.main_key].items():
             flatt_dict = self.recursive_cost_dict(k, v, None, flatt_dict)
@@ -94,6 +106,9 @@ class FinancialXMLParts:
         return ret_dict | flatt_dict
 
     def get_pd(self):
+        if self.flatten_dict is None:
+            return None, None
+
         border_this_list = []
 
         column_names = ["key", ''] + [self.xsd_dict[x] for x in self.cost_tag_set]
@@ -101,12 +116,15 @@ class FinancialXMLParts:
 
         row = 1
         for k, v in self.flatten_dict.items():
+            if len(v) == 0:
+                continue
+
             if re.match(r'^(.)\1*$', k.strip()):
                 border_this_list.append(1)
             else:
                 border_this_list.append(0)
             key_element = k.replace(f'{self.main_key}', '')
-            key_element = key_element[1:] if len(key_element) > 0 else key_element
+            key_element = key_element[1:] if len(key_element) > 0 and key_element[0] == "_" else key_element
             key_element = key_element.replace('_', '.')
 
             df.loc[row] = [key_element, self.xsd_dict[k]] + [v[x] for x in self.cost_tag_set]
@@ -256,31 +274,35 @@ class FinancialXMLParser:
         # get introduction
         self.introduction_dict = self.find_introduction()
         self.introduction_pd, self.introduction_border_list = self.generate_introduction_pd()
-        self.assets_obj = FinancialXMLParts("Aktywa", self.root, self.xsd_dict)
-        # mhmm = ass.flatten_dict
-        # mhmm_pd = ass.pd
+        # Finacial objects setup
+        self.assets_obj = FinancialXMLParts(["Aktywa"], self.root, self.xsd_dict)
+        self.passives_obj = FinancialXMLParts(["Pasywa"], self.root, self.xsd_dict)
+        self.gains_and_losses_obj = FinancialXMLParts(["RZiSPor", "RZiSKalk"], self.root, self.xsd_dict)
+        self.change_in_capital_obj = FinancialXMLParts(["ZestZmianWKapitale"], self.root, self.xsd_dict)
+        self.capital_flow_obj = FinancialXMLParts(["RachPrzeplywow"], self.root, self.xsd_dict)
+
         # get bilans
-        self.financial_balance_dict = self.find_bilans_and_parse()
+        # self.financial_balance_dict = self.find_bilans_and_parse()
         # get aktywa dict
-        self.assets_dict = self.get_assets()
+        # self.assets_dict = self.get_assets()
         # get pasywa dict
-        self.passives_dict = self.get_equity_plus_liabilities()
+        # self.passives_dict = self.get_equity_plus_liabilities()
         # Embedde file extraction
         self.list_of_dict_embedded_files = self.get_embedded_files()
         # Aktywa pd
         # self.assets_pd, self.assets_border_list = self.generate_assets_pd()
         self.assets_pd, self.assets_border_list = self.assets_obj.get_pd()
         # Pasywa pd
-        self.passives_pd, self.passives_border_list = self.generate_passives_pd()
+        self.passives_pd, self.passives_border_list = self.passives_obj.get_pd()
         # Rachunek zysków i start
-        self.gain_and_loses_dict, self.gain_and_loses_title_tag = self.find_gains_and_loses()
-        self.gain_and_loses_pd, self.gain_and_loses_border_list = self.generate_gains_and_loses_pd()
+        # self.gain_and_loses_dict, self.gain_and_loses_title_tag = self.find_gains_and_loses()
+        self.gain_and_loses_pd, self.gain_and_loses_border_list = self.gains_and_losses_obj.get_pd() #self.generate_gains_and_loses_pd()
         # Zestawienie zmian w kapitale
-        self.change_in_capital_dict = self.find_change_in_capital()
-        self.change_in_capital_pd, self.change_in_capital_border_list = self.generate_change_in_capital_pd()
+        # self.change_in_capital_dict = self.find_change_in_capital()
+        self.change_in_capital_pd, self.change_in_capital_border_list = self.change_in_capital_obj.get_pd()
         # Rachunek Przepływów
-        self.capital_flow_dict, self.capital_flow_title_tag = self.find_capital_flow()
-        self.capital_flow_pd, self.capital_flow_border_list = self.generate_capital_flow_pd()
+        # self.capital_flow_dict, self.capital_flow_title_tag = self.find_capital_flow()
+        self.capital_flow_pd, self.capital_flow_border_list = self.capital_flow_obj.get_pd()
         # Informacja dodatkowa
         self.additional_info_dict = self.find_additional_info()
         self.additional_info_pd, self.additional_info_border_list = self.generate_additional_info_pd()
@@ -799,11 +821,27 @@ class FinancialXMLParser:
 
     def generate_passives_excel(self, out_file_name):
         # self.generate_excel(out_file_name, self.passives_dict, base_tag="Pasywa")
-        self.generate_excel_from_numbers_pd(self.passives_pd, self.passives_border_list, out_file_name)
+        # self.generate_excel_from_numbers_pd(self.passives_pd, self.passives_border_list, out_file_name)
+        self.passives_obj.get_excel(out_file_name)
 
     def generate_assets_excel(self, out_file_name):
         # self.generate_excel_from_numbers_pd(self.assets_pd, self.assets_border_list, out_file_name)
         self.assets_obj.get_excel(out_file_name)
+
+    def generate_gains_and_loses_excel(self, out_file_name):
+        # self.generate_excel_from_numbers_pd(self.gain_and_loses_pd, self.gain_and_loses_border_list, out_file_name,
+        #                                     title_row=self.gain_and_loses_title_tag)
+        self.gains_and_losses_obj.get_excel(out_file_name)
+
+    def generate_change_in_capital_excel(self, out_file_name):
+        # self.generate_excel_from_numbers_pd(self.change_in_capital_pd, self.change_in_capital_border_list,
+        #                                     out_file_name)
+        self.change_in_capital_obj.get_excel(out_file_name)
+
+    def generate_capital_flow_excel(self, out_file_name):
+        # self.generate_excel_from_numbers_pd(self.capital_flow_pd, self.capital_flow_border_list, out_file_name,
+        #                                     title_row=self.capital_flow_title_tag)
+        self.capital_flow_obj.get_excel(out_file_name)
 
     def generate_assets_pd(self):
         return self.generate_costs_pd(self.assets_dict, base_tag="Aktywa")
@@ -842,17 +880,7 @@ class FinancialXMLParser:
         df.set_index("key", inplace=True)
         return df, border_this_list
 
-    def generate_gains_and_loses_excel(self, out_file_name):
-        self.generate_excel_from_numbers_pd(self.gain_and_loses_pd, self.gain_and_loses_border_list, out_file_name,
-                                            title_row=self.gain_and_loses_title_tag)
 
-    def generate_change_in_capital_excel(self, out_file_name):
-        self.generate_excel_from_numbers_pd(self.change_in_capital_pd, self.change_in_capital_border_list,
-                                            out_file_name)
-
-    def generate_capital_flow_excel(self, out_file_name):
-        self.generate_excel_from_numbers_pd(self.capital_flow_pd, self.capital_flow_border_list, out_file_name,
-                                            title_row=self.capital_flow_title_tag)
 
     def generate_excel_from_numbers_pd(self, df, df_border_list, out_file_name, title_row=None):
         workbook = xlsxwriter.Workbook(out_file_name)

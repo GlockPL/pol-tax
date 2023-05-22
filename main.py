@@ -2,8 +2,6 @@ from PySide6.QtWidgets import QApplication, QWidget, QStyleFactory
 from PySide6.QtGui import QColor, QPalette
 from Widgets.MainWindow import MainGUI
 
-from qt_material import apply_stylesheet
-
 from Settings import Settings
 
 import sys
