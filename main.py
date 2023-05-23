@@ -1,5 +1,7 @@
 from PySide6.QtWidgets import QApplication, QWidget, QStyleFactory
 from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QObject, Signal
+
 from Widgets.MainWindow import MainGUI
 
 from Settings import Settings
@@ -7,52 +9,48 @@ from Settings import Settings
 import sys
 import subprocess
 
+import logging
+
+# Set up the logger
+logging.basicConfig(filename='app.log', level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)s %(name)s %(message)s')
+
+
+class ExceptHook(QObject):
+    error = Signal(object)
+
+    def handle_exception(self, exctype, value, traceback):
+        self.error.emit((exctype, value, traceback))
+
+
+def handle_exception(error_info):
+    exctype, value, traceback = error_info
+    print("handle_exception is being triggered!")
+    logging.error("Uncaught Exception:",
+                  exc_info=(exctype, value, traceback))
+
+
 if __name__ == "__main__":
-    # Define your colors
-    # background_color = QColor("#F2F2F2")
-    # text_color = QColor("#000000")
-    # accent_color = QColor("#0078D7")
-    # border_color = QColor("#C2C2C2")
-    #
-    # # Create a palette and set the colors
-    # palette = QPalette()
-    # palette.setColor(QPalette.Window, background_color)
-    # palette.setColor(QPalette.WindowText, text_color)
-    # palette.setColor(QPalette.Button, background_color)
-    # palette.setColor(QPalette.ButtonText, text_color)
-    # palette.setColor(QPalette.ToolTipBase, background_color)
-    # palette.setColor(QPalette.ToolTipText, text_color)
-    # palette.setColor(QPalette.Link, accent_color)
-    # palette.setColor(QPalette.LinkVisited, accent_color)
-    # palette.setColor(QPalette.Disabled, QPalette.Text, QColor("#999999"))
-    # palette.setColor(QPalette.Disabled, QPalette.WindowText, QColor("#999999"))
-    # palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#999999"))
-    # palette.setColor(QPalette.Disabled, QPalette.Highlight, QColor("#DDDDDD"))
-    # palette.setColor(QPalette.Disabled, QPalette.HighlightedText, QColor("#999999"))
-    # palette.setColor(QPalette.Mid, border_color)
-    # palette.setColor(QPalette.Dark, QColor("#9B9B9B"))
-    #
-    # # Set the base color to a light gray color
-    # palette.setColor(QPalette.Base, QColor('#fbfbfb'))
-    # # Set the text color to black
-    # palette.setColor(QPalette.Text, QColor('#000000'))
-    # # Set the highlight color to a light blue color
-    # palette.setColor(QPalette.Highlight, QColor('#A3C7FF'))
-    # # Set the highlighted text color to white
-    # palette.setColor(QPalette.HighlightedText, QColor('#FFFFFF'))
+    excepthook = ExceptHook()
+    sys.excepthook = excepthook.handle_exception
+
+    # Log a test message
+    logging.warning("App Started - Begging of Logging!")
 
     app = QApplication(sys.argv)
-    # app.setPalette(palette)
-    # print(QStyleFactory.keys())  # Print available styles
+
+    excepthook.error.connect(handle_exception)
+    logging.captureWarnings(True)
     app.setStyle(QStyleFactory.create('Material'))
 
-    try:
-        settings = Settings()
-    except PermissionError:
-        subprocess.run([sys.executable] + sys.argv, shell=True, elevation=True)
-        sys.exit(0)
+    # try:
+    settings = Settings()
+    # except PermissionError as e:
+    #     logging.error("Permission Error:", exc_info=(type(e), e, e.__traceback__))
+    #     subprocess.run([sys.executable] + sys.argv, shell=True, elevation=True)
+    #     sys.exit(0)
 
     window = MainGUI(app, settings)
     window.show()
 
-    app.exec()
+    sys.exit(app.exec())

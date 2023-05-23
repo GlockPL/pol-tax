@@ -3,9 +3,6 @@ from PySide6.QtCore import QStandardPaths, QDir
 import pickle
 from pathlib import Path
 import atexit
-import logging
-
-loging_level = logging.DEBUG
 
 
 class Settings:

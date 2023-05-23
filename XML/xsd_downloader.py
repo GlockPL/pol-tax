@@ -14,10 +14,8 @@ import time
 import logging
 import urllib.request
 from urllib.parse import urljoin, urlparse, unquote
-from Settings import loging_level
 
 XSD_DIR = "./cache"
-logging.basicConfig(level=loging_level)
 
 
 def url_to_path(url: str) -> str:

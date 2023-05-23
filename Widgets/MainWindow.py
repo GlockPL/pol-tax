@@ -20,9 +20,7 @@ from Widgets.AboutDialog import AboutDialog
 from Widgets.ColorDelegate import ColorDelegate
 from Widgets.SettingsDialog import SettingsDialog
 from Model.PandasModel import PandasModel
-from Settings import loging_level, Settings
-
-logging.basicConfig(level=loging_level)
+from Settings import Settings
 
 
 class MainGUI(QMainWindow):

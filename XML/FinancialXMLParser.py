@@ -14,9 +14,7 @@ from decimal import Decimal, InvalidOperation
 
 # My files Import
 from XML.xsd_downloader import download_schema, XSD_DIR
-from Settings import Settings, loging_level
-
-logging.basicConfig(level=loging_level)
+from Settings import Settings
 
 roman2arabic = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10, 'XI': 11,
                 'XII': 12, 'XIII': 13, 'XIV': 14, 'XV': 15, 'XVI': 16, 'XVII': 17, 'XVIII': 18, 'XIX': 19, 'XX': 20}
