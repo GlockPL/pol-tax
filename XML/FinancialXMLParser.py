@@ -92,6 +92,7 @@ class FinancialXMLParts:
         return xml_dict
 
     def flatten_xml_dict(self):
+        logging.debug(f"Flattening xml dict for {self.main_key}")
         if self.tree_dict is None:
             return None
 
@@ -103,6 +104,7 @@ class FinancialXMLParts:
         return ret_dict | flatt_dict
 
     def get_pd(self):
+        logging.debug(f"Generating pandas dataframe for {self.main_key}")
         if self.flatten_dict is None:
             return None, None
 
@@ -131,6 +133,7 @@ class FinancialXMLParts:
         return df, border_this_list
 
     def get_excel(self, out_file_name):
+        logging.debug(f"Generating excel file for {self.main_key}")
         title_row = None
 
         workbook = xlsxwriter.Workbook(out_file_name)
@@ -685,6 +688,7 @@ def decimal_to_bool(dec_val):
 
 class FinancialXMLRulesCheck:
     def __init__(self, f_xml: FinancialXMLParser):
+        logging.debug(f"Beggining rulse check for {f_xml.xml_path}")
         self.f_xml = f_xml
         letter_range = 'A-D'
         logging.debug(f'Range {letter_range} list: {self.letter_range_to_list(letter_range)}')
