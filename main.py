@@ -11,13 +11,16 @@ import subprocess
 
 import logging
 
+settings = Settings()
+
+
 loging_level = logging.DEBUG
 # Set up the logger
 logger = logging.getLogger()  # Gets the root logger
 logger.setLevel(loging_level)  # Set the minimum logging level to log
 
 # Create file handler which logs warnings and above
-file_handler = logging.FileHandler('app.log')
+file_handler = logging.FileHandler(f'{settings.get_docs_path()}/app.log')
 file_handler.setLevel(loging_level)
 
 # Create console handler with a higher log level
@@ -54,6 +57,7 @@ if __name__ == "__main__":
 
     # Log a test message
     logger.debug("App Started - Begging of Logging!")
+    logger.debug(f"Current doc save path: {settings.get_docs_path()}")
 
     app = QApplication(sys.argv)
 
@@ -61,12 +65,12 @@ if __name__ == "__main__":
     logging.captureWarnings(True)
     app.setStyle(QStyleFactory.create('Material'))
 
-    try:
-        settings = Settings()
-    except PermissionError as e:
-        logger.error("Permission Error:", exc_info=(type(e), e, e.__traceback__))
-        subprocess.run([sys.executable] + sys.argv, shell=True, elevation=True)
-        sys.exit(0)
+    # try:
+    #     settings = Settings()
+    # except PermissionError as e:
+    #     logger.error("Permission Error:", exc_info=(type(e), e, e.__traceback__))
+    #     subprocess.run([sys.executable] + sys.argv, shell=True, elevation=True)
+    #     sys.exit(0)
 
     window = MainGUI(app, settings)
     window.show()

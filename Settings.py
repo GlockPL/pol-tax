@@ -1,6 +1,9 @@
+import logging
+
 from PySide6.QtCore import QStandardPaths, QDir
 
 import pickle
+import os
 from pathlib import Path
 import atexit
 
@@ -35,6 +38,7 @@ class Settings:
         if self.__initialized:
             return
         self.__initialized = True
+        self.test_permissible_paths()
 
         self._excel_dir = self._docs_path.joinpath(self._excel_dir)
         self._extracted_files_dir = self._docs_path.joinpath(self._extracted_files_dir)
@@ -51,6 +55,28 @@ class Settings:
     def __enter__(self):
         return self
 
+    def test_permissible_paths(self):
+        directories = [
+            Path.home() / "Documents",
+            Path.home() / "Desktop",
+        ]
+
+        # Add all available drives to the list
+        drives = os.popen('wmic logicaldisk get name').read().split()[1:]
+        directories.extend(Path(drive) for drive in drives)
+
+        for directory in directories:
+            if directory.exists():
+                try:
+                    test_file = directory / "test_file.tmp"
+                    test_file.touch(exist_ok=True)
+                    test_file.unlink()  # remove the test file
+                    self._docs_path = directory / "pol-tax"
+                    return
+                except PermissionError:
+                    pass
+        logging.error("No path is accessible!")
+
     def get_excel_dir(self):
         return str(self._excel_dir.absolute())
 
@@ -59,6 +85,9 @@ class Settings:
 
     def get_keywords(self):
         return self._additional_keywords
+
+    def get_docs_path(self):
+        return self._docs_path
 
     def set_keywords(self, d):
         self._additional_keywords = d

@@ -15,7 +15,11 @@ import logging
 import urllib.request
 from urllib.parse import urljoin, urlparse, unquote
 
-XSD_DIR = "./cache"
+from Settings import Settings
+
+settings = Settings()
+
+XSD_DIR = f"{settings.get_docs_path()}/cache"
 
 
 def url_to_path(url: str) -> str:
