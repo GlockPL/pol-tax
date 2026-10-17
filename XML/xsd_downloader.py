@@ -9,6 +9,7 @@ XSD Downloader
 
 import os
 import re
+import hashlib
 import ctypes
 import time
 import logging
@@ -20,6 +21,16 @@ from Settings import Settings
 settings = Settings()
 
 XSD_DIR = f"{settings.get_docs_path()}/cache"
+DOWNLOAD_TIMEOUT = 30
+
+
+def schema_cache_dir(schema_url: str) -> str:
+    """
+    Every root schema gets its own cache folder, so labels from different
+    schema versions (which reuse the same file names) never get mixed
+    """
+    url_hash = hashlib.sha256(schema_url.encode()).hexdigest()[:16]
+    return f"{XSD_DIR}/{url_hash}"
 
 
 def url_to_path(url: str) -> str:
@@ -77,8 +88,9 @@ def save_file(url: str, text: str, file_name: str) -> None:
     # create directory structure
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
-        FILE_ATTRIBUTE_HIDDEN = 0x02
-        ret = ctypes.windll.kernel32.SetFileAttributesW(dir_name, FILE_ATTRIBUTE_HIDDEN)
+        if os.name == "nt":
+            FILE_ATTRIBUTE_HIDDEN = 0x02
+            ctypes.windll.kernel32.SetFileAttributesW(dir_name, FILE_ATTRIBUTE_HIDDEN)
 
     #     return last_path
     with open(file_name, "w", encoding="utf_8_sig") as f:
@@ -92,7 +104,7 @@ def download_xml_url(url: str) -> str:
     Fetches URL, returns text of the document
     """
 
-    urlopen = urllib.request.urlopen(url)
+    urlopen = urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT)
     response = urlopen.read()
     headers = dict(urlopen.headers.items())
     try:
@@ -112,28 +124,29 @@ def download_schema(url: str) -> None:
 
     # list of the URLs that have been downloaded already
     downloaded_urls = []
+    cache_dir = schema_cache_dir(url)
 
     def recursive_get_schema_locations(url: str, referring_url: str) -> None:
         """
         Recursive function that is the heart of the script,
         stops when... TODO
         """
-        file_path_from_url = XSD_DIR + "/" + plain_filename(url)
+        file_path_from_url = cache_dir + "/" + plain_filename(url)
         # dont download same link twice
         if url not in downloaded_urls and not os.path.exists(file_path_from_url):
             downloaded_urls.append(url)
             try:
                 xsd_data, header_filename = download_xml_url(url)
 
-            except urllib.error.URLError as e:
-                logging.debug(
+            except (urllib.error.URLError, TimeoutError) as e:
+                logging.error(
                     "ERROR loading {} , referenced in {} REASON: {} ".format(
-                        url, referring_url, e.reason
+                        url, referring_url, getattr(e, "reason", e)
                     )
                 )
                 return
             if header_filename is not None and header_filename != plain_filename(url):
-                file_path_from_url = XSD_DIR + "/" + header_filename
+                file_path_from_url = cache_dir + "/" + header_filename
             # all the XSDs linked from this file via schemaLocation
             schema_locations = re.findall('schemaLocation="([^"]*)"', xsd_data)
 

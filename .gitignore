@@ -56,3 +56,10 @@ Thumbs.db
 *.mov
 *.wmv
 
+
+# uv / Python environment
+.venv/
+__pycache__/
+
+# Local scratch notebook (contains real filing data, never commit)
+xbrl_parser.ipynb

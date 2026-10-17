@@ -181,7 +181,7 @@ class MainGUI(QMainWindow):
             self.f_xml.generate_introduction_excel_from_pd(introduction_excel_path)
             self.f_xml.generate_gains_and_loses_excel(gains_and_loses_excel_path)
 
-            pdf_paths = self.f_xml.extract_embedded_files()
+            pdf_paths = self.f_xml.extract_embedded_files(self.app_settings.get_extracted_dir() / hash_val)
 
             self.clear_second_level_tree()
 
@@ -326,9 +326,10 @@ class MainGUI(QMainWindow):
             logging.debug("Brak excela!")
 
     def get_hash_path(self, path: Path):
+        # File name for readability plus a hash of the full path, so same-named XMLs from different folders don't collide
         sha = hashlib.sha256()
-        sha.update(path.name.encode())
-        return sha.hexdigest()
+        sha.update(str(path.resolve()).encode())
+        return f"{path.stem}_{sha.hexdigest()[:8]}"
 
     def load_svg_and_color(self, icon_res_path, color):
         renderer = QSvgRenderer()

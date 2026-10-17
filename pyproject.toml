@@ -1,0 +1,24 @@
+[project]
+name = "pol-tax"
+version = "0.0.4.6"
+description = "Desktop viewer and Excel exporter for Polish e-financial statements (e-Sprawozdania finansowe) filed with the KRS"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyside6>=6.7",
+    "xlsxwriter>=3.2",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.10",
+    "pytest>=8.3",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

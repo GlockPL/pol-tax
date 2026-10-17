@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from urllib.parse import unquote
 from urllib.parse import urlparse
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import xlsxwriter
 import argparse
 import re
@@ -13,7 +13,7 @@ import string
 from decimal import Decimal, InvalidOperation
 
 # My files Import
-from XML.xsd_downloader import download_schema, XSD_DIR
+from XML.xsd_downloader import download_schema, schema_cache_dir
 from Settings import Settings
 
 roman2arabic = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10, 'XI': 11,
@@ -79,7 +79,7 @@ class FinancialXMLParts:
     def determine_main_key_existance(self, main_keys):
         for key in main_keys:
             tag_elem = self.find_tags_ending_with(key)
-            if len(tag_elem) > 0:
+            if tag_elem is not None:
                 return tag_elem, key
         return None, None
 
@@ -110,7 +110,8 @@ class FinancialXMLParts:
 
         border_this_list = []
 
-        column_names = ["key", ''] + [self.xsd_dict[x] for x in self.cost_tag_set]
+        cost_tags = sorted(self.cost_tag_set)
+        column_names = ["key", ''] + [self.xsd_dict.get(x, x) for x in cost_tags]
         df = pd.DataFrame(columns=column_names)
 
         row = 1
@@ -126,7 +127,7 @@ class FinancialXMLParts:
             key_element = key_element[1:] if len(key_element) > 0 and key_element[0] == "_" else key_element
             key_element = key_element.replace('_', '.')
 
-            df.loc[row] = [key_element, self.xsd_dict[k]] + [v[x] for x in self.cost_tag_set]
+            df.loc[row] = [key_element, self.xsd_dict.get(k, k)] + [v.get(x) for x in cost_tags]
             row += 1
 
         df.set_index("key", inplace=True)
@@ -191,7 +192,7 @@ class FinancialXMLParts:
                 else:
                     return element
 
-        return tags
+        return tags if full_search else None
 
     def recursive_cost_dict(self, key, value, up_key, main_dict):
         current_dict = main_dict['Koszta']
@@ -244,11 +245,14 @@ class FinancialXMLParser:
         self.xml_path = xml_path
         self.tree = ET.parse(xml_path)
         self.root = self.tree.getroot()
-        # Creates cache dir
-        self.cache_dir = XSD_DIR
-        Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
         # Gets schema url from xml file
         self.schema_url = self.get_schema_url()
+        if self.schema_url is None:
+            raise ValueError(f"Plik {xml_path} nie zawiera adresu schematu (schemaLocation) - "
+                             f"to nie jest e-sprawozdanie finansowe?")
+        # Creates cache dir, separate for every schema
+        self.cache_dir = schema_cache_dir(self.schema_url)
+        Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
         self.download_xsd()
         self.xsd_dict = self.map_xsd()
         self.xsd_dict_orig = self.xsd_dict.copy()
@@ -315,7 +319,7 @@ class FinancialXMLParser:
                 for elem in child:
                     if "annotation" in elem.tag:
                         val = elem[0].text
-                        val = re.sub('\[.*\]', '', val)
+                        val = re.sub(r'\[.*\]', '', val)
                         dict_obj[name] = val
             self.recur_annot(child, dict_obj)
 
@@ -660,7 +664,7 @@ class FinancialXMLParser:
     def generate_capital_flow_excel(self, out_file_name):
         self.capital_flow_obj.get_excel(out_file_name)
 
-    def extract_embedded_files(self):
+    def extract_embedded_files(self, target_dir: Path):
         files_list = []
         for tag_dict in self.list_of_dict_embedded_files:
             files_dict = tag_dict['DodatkoweInformacjeIObjasnienia']
@@ -668,10 +672,15 @@ class FinancialXMLParser:
                 if k == "Plik":
                     files_list.append({'file_name': v['Nazwa'], 'content': v['Zawartosc']})
 
+        target_dir = Path(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
         file_paths = []
-        for elem in files_list:
-            file_path = Path(elem['file_name'])
-            concatenated_path = Path.joinpath(self.app_settings.get_extracted_dir(), file_path)
+        for idx, elem in enumerate(files_list):
+            # File names come from the XML, keep only the last path component so they cannot escape target_dir
+            file_name = PureWindowsPath(elem['file_name']).name
+            if file_name in ('', '.', '..'):
+                file_name = f'zalacznik_{idx + 1}'
+            concatenated_path = target_dir / file_name
             base64_bytes = elem['content'].encode('utf8')
             message_bytes = base64.b64decode(base64_bytes)
 
@@ -752,7 +761,7 @@ class FinancialXMLRulesCheck:
                           'B.III.2': [{'range': 'B.III.2.A-B', 'years': [1, 2]}],
                           'B.III.2.A': [{'range': 'B.III.2.A.1-2', 'years': [1, 2]}],
                           'B.III.3': [{'range': 'B.III.3.A-I', 'years': [1, 2]}],
-                          'B.III.2.D': [{'range': 'B.III.2.D.1-2', 'years': [1, 2]}],
+                          'B.III.3.D': [{'range': 'B.III.3.D.1-2', 'years': [1, 2]}],
                           'B.IV': [{'range': 'B.IV.1-2', 'years': [1, 2]}],
                           'B.IV.2': [{'range': 'B.IV.2.1-2', 'years': [1, 2]}]},
                       'gain_and_loses': {
@@ -870,6 +879,26 @@ class FinancialXMLRulesCheck:
                           'A_RP': [{'value': {'index': 'I', 'source': self.f_xml.gain_and_loses_pd, 'year': 2},
                                     'years': [1]}]}
                       }
+        if self.f_xml.gains_and_losses_obj.main_key != 'RZiSPor':
+            self.drop_gain_and_loses_rules()
+
+    def drop_gain_and_loses_rules(self):
+        """
+        Rules were written for the comparative P&L variant (RZiSPor). For the calculation variant (RZiSKalk) the
+        letters mean different positions, so every rule that uses the P&L would compare the wrong numbers.
+        """
+        logging.info("RZiS is not in the comparative variant, skipping rules that depend on it")
+        gain_and_loses_pd = self.f_xml.gain_and_loses_pd
+        self.rules.pop('gain_and_loses', None)
+        for subset_rules in self.rules.values():
+            for index in list(subset_rules.keys()):
+                subset_rules[index] = [rule for rule in subset_rules[index]
+                                       if not ('value' in rule and rule['value'].get('source') is gain_and_loses_pd
+                                               and gain_and_loses_pd is not None)
+                                       and not any(op.get('source') == 'gain_and_loses'
+                                                   for op in rule.get('operations', []))]
+                if len(subset_rules[index]) == 0:
+                    del subset_rules[index]
 
     def constants_pd(self):
         indexes = ['-1', '0', '1']
@@ -920,13 +949,15 @@ class FinancialXMLRulesCheck:
         return range_list
 
     def reverse_polish_notation(self, expression_list):
+        """
+        Returns None when the statement referenced by the expression is missing from the file
+        """
         stack = []
         for elem in expression_list:
             if 'index' in elem:
                 df = self.pds[elem['source']]['pd']
                 if df is None:
-                    stack.append(Decimal(0.0))
-                    continue
+                    return None
 
                 cols = df.columns
                 val = self.get_pd_val(df, elem['index'], elem['year'], cols)
@@ -949,9 +980,12 @@ class FinancialXMLRulesCheck:
         try:
             val = df.loc[index][columns[year]]
             error = False
-        except KeyError:
+        except (KeyError, IndexError):
             val = 0
             error = True
+
+        if val is None:
+            val = 0
 
         if return_error:
             return val, error
@@ -995,11 +1029,17 @@ class FinancialXMLRulesCheck:
                             picked_year = list_elem['value']['year']
                         value_idx = list_elem['value']['index']
                         value_src = list_elem['value']['source']
+                        if value_src is None:
+                            # The statement this rule compares with is not in the file
+                            year_sum.append(None)
+                            continue
                         value_src_cols = list(value_src.columns)
-                        sum_val = checked_value - self.get_pd_val(value_src,
-                                                                  value_idx,
-                                                                  picked_year,
-                                                                  value_src_cols)
+                        ref_val, missing = self.get_pd_val(value_src, value_idx, picked_year, value_src_cols,
+                                                           return_error=True)
+                        if missing:
+                            year_sum.append(None)
+                            continue
+                        sum_val = checked_value - ref_val
                         # sum_val = picked_pd.loc[index][p_pd_columns[year]] - value_src.loc[value_idx][value_src_cols[picked_year]]
                 elif 'diff_range' in list_elem:
                     # Podobnie jak w range, tylko tutaj jest ciąg liczb odejmowanych od siebie
@@ -1042,6 +1082,9 @@ class FinancialXMLRulesCheck:
                     sum_val = checked_value - sum_val
                 elif 'operations' in list_elem:
                     rpn = self.reverse_polish_notation(list_elem['operations'])
+                    if rpn is None:
+                        year_sum.append(None)
+                        continue
                     sum_val = checked_value - rpn
                 year_sum.append(decimal_to_bool(sum_val))
 
@@ -1133,7 +1176,8 @@ class FinancialXMLRulesCheck:
                             # worksheet.write_number(i, 2 * idx + 3, s_check[0], number_format)
                             # worksheet.write_number(i, 2 * idx + 4, s_check[1], number_format)
                             for s_id, s_check in enumerate(s_val):
-                                worksheet.write_boolean(i, 2 * idx + len(cols) + s_id, s_check)
+                                if s_check is not None:
+                                    worksheet.write_boolean(i, 2 * idx + len(cols) + s_id, s_check)
                             # worksheet.write_boolean(i, 2 * idx + 4, s_check[1])
                 i += 1
                 j += 1

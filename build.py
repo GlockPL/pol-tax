@@ -76,6 +76,7 @@ if __name__ == "__main__":
         verfile_content = file.read()
 
     current_version_l = list(vers.up_build())
+    vers.save()
     ver_str = num_list_to_str(current_version_l)
     verfile_content = build_up_version(ver_str, 'filevers', verfile_content)
     verfile_content = build_up_version(ver_str, 'prodvers', verfile_content)

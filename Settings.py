@@ -1,6 +1,6 @@
 import logging
 
-from PySide6.QtCore import QStandardPaths, QDir
+from PySide6.QtCore import QStandardPaths
 
 import pickle
 import os
@@ -13,7 +13,7 @@ class Settings:
     _extracted_files_dir = Path("./Extracted")
     # TODO: Paradox of opening setting file that can change it's location after closing
     _settings_path = Path("./settings.pickle")
-    _docs_path = Path(QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)) / "pol-tax"
+    _docs_path = None
     _additional_keywords = {
         "KwotaA": "Kwota na dzień kończący bieżący rok obrotowy",
         "KwotaB": "Kwota na dzień kończący poprzedni rok obrotowy",
@@ -38,7 +38,7 @@ class Settings:
         if self.__initialized:
             return
         self.__initialized = True
-        self.test_permissible_paths()
+        self._docs_path = self.find_docs_path()
 
         self._excel_dir = self._docs_path.joinpath(self._excel_dir)
         self._extracted_files_dir = self._docs_path.joinpath(self._extracted_files_dir)
@@ -55,27 +55,34 @@ class Settings:
     def __enter__(self):
         return self
 
-    def test_permissible_paths(self):
-        directories = [
-            Path.home() / "Documents",
-            Path.home() / "Desktop",
+    @staticmethod
+    def find_docs_path():
+        # POL_TAX_HOME overrides the data folder (used by tests)
+        override = os.environ.get("POL_TAX_HOME")
+        if override:
+            path = Path(override)
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+
+        candidates = [
+            QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation),
+            QStandardPaths.writableLocation(QStandardPaths.GenericDataLocation),
+            str(Path.home()),
         ]
-
-        # Add all available drives to the list
-        drives = os.popen('wmic logicaldisk get name').read().split()[1:]
-        directories.extend(Path(drive) for drive in drives)
-
-        for directory in directories:
-            if directory.exists():
-                try:
-                    test_file = directory / "test_file.tmp"
-                    test_file.touch(exist_ok=True)
-                    test_file.unlink()  # remove the test file
-                    self._docs_path = directory / "pol-tax"
-                    return
-                except PermissionError:
-                    pass
+        for candidate in candidates:
+            if not candidate:
+                continue
+            path = Path(candidate) / "pol-tax"
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+                test_file = path / ".write_test"
+                test_file.touch(exist_ok=True)
+                test_file.unlink()
+                return path
+            except OSError:
+                logging.warning(f"Folder {path} is not writable")
         logging.error("No path is accessible!")
+        return Path.home() / "pol-tax"
 
     def get_excel_dir(self):
         return str(self._excel_dir.absolute())
@@ -94,12 +101,11 @@ class Settings:
 
     def set_excel_dir(self, path):
         self._excel_dir = Path(path)
+        self._excel_dir.mkdir(exist_ok=True, parents=True)
 
     def cleanup(self):
         with self._settings_path.open(mode='wb') as output_file:
             pickle.dump(self.__dict__, output_file)
 
     def __exit__(self, exc_type, exc_value, traceback):
-        print("Dumping Settings")
-        with self._settings_path.open(mode='wb') as output_file:
-            pickle.dump(self.__dict__, output_file)
+        self.cleanup()

@@ -1,23 +1,29 @@
 from pathlib import Path
+import sys
 import numpy as np
-import atexit
+
+
+def _app_root() -> Path:
+    # Frozen (PyInstaller) builds keep resources next to the executable
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
 
 
 class Version(object):
     # Major.Minor.Patch.Build
-    _version_file = Path("./resources/version.npy")
+    _version_file = _app_root() / "resources" / "version.npy"
     __instance = None
 
     def __init__(self):
         if self.__initialized:
             return
         self.__initialized = True
-        atexit.register(self.cleanup)
         if self._version_file.exists():
             with self._version_file.open(mode='rb') as np_file:
                 self.version_np = np.load(np_file)
         else:
-            self.version_np = np.zeros(4, dtype=np.int)
+            self.version_np = np.zeros(4, dtype=int)
             self.version_np[2] = 1
 
     def __new__(cls):
@@ -69,10 +75,9 @@ class Version(object):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        with self._version_file.open(mode='wb') as output_file:
-            np.save(output_file, self.version_np)
+        self.save()
 
-    def cleanup(self):
+    def save(self):
         with self._version_file.open(mode='wb') as output_file:
             np.save(output_file, self.version_np)
 
@@ -81,3 +86,4 @@ if __name__ == "__main__":
     ver = Version()
     # ver.set_version(0, 0, 1, 0)
     ver.up_patch()
+    ver.save()

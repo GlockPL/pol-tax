@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QApplication, QWidget, QStyleFactory
+from PySide6.QtWidgets import QApplication, QMessageBox, QStyleFactory
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtCore import QObject, Signal
 
@@ -7,7 +7,6 @@ from Widgets.MainWindow import MainGUI
 from Settings import Settings
 
 import sys
-import subprocess
 
 import logging
 
@@ -49,6 +48,13 @@ def handle_exception(error_info):
     logger.debug("handle_exception is being triggered!")
     logger.error("Uncaught Exception:",
                   exc_info=(exctype, value, traceback))
+    QMessageBox.critical(None, "Błąd",
+                         f"Wystąpił nieoczekiwany błąd:
+
+{value}
+
+"
+                         f"Szczegóły zapisano w {settings.get_docs_path() / 'app.log'}")
 
 
 if __name__ == "__main__":
@@ -63,14 +69,7 @@ if __name__ == "__main__":
 
     excepthook.error.connect(handle_exception)
     logging.captureWarnings(True)
-    app.setStyle(QStyleFactory.create('Material'))
-
-    # try:
-    #     settings = Settings()
-    # except PermissionError as e:
-    #     logger.error("Permission Error:", exc_info=(type(e), e, e.__traceback__))
-    #     subprocess.run([sys.executable] + sys.argv, shell=True, elevation=True)
-    #     sys.exit(0)
+    app.setStyle(QStyleFactory.create('Fusion'))
 
     window = MainGUI(app, settings)
     window.show()
