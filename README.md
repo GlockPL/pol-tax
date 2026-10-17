@@ -24,6 +24,17 @@ uv sync
 uv run python main.py
 ```
 
+## Command line
+
+Convert many statements at once without the GUI (`--check` adds the consistency check workbook):
+
+```console
+uv run python cli.py sprawozdanie1.xml sprawozdanie2.xml -o wyniki --check
+```
+
+Settings, the XSD cache, Excel files and extracted attachments live in `Documents\pol-tax`.
+The consistency rules are defined in [`XML/rules.py`](XML/rules.py).
+
 ## Tests
 
 ```console
@@ -36,5 +47,6 @@ uv run pytest
 package.bat
 ```
 
-This bumps the build number and creates `dist/pol-tax` with PyInstaller.
-The Inno Setup scripts in `installer/` package it into an installer.
+This bumps the build number in `resources/version.txt` (the single source of the version, also synced into
+`pyproject.toml` and `file_version_info.txt`) and creates `dist/pol-tax` with PyInstaller.
+The Inno Setup scripts in `installer/` package it into an installer and read the version from the same file.

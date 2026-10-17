@@ -2,7 +2,11 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Pol-Tax"
-#define MyAppVersion "0.0.4.2"
+; Version comes from resources\version.txt, bumped by build.py
+#define VersionFile FileOpen(AddBackslash(SourcePath) + "..\resources\version.txt")
+#define MyAppVersion Trim(FileRead(VersionFile))
+#expr FileClose(VersionFile)
+#undef VersionFile
 #define MyAppExeName "pol-tax.exe"
 
 [Setup]
@@ -17,8 +21,8 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
-OutputBaseFilename=Pol-Tax_0.0.4.2
-SetupIconFile=E:\pol-tax\installer\pol_tax_icon.ico
+OutputBaseFilename=Pol-Tax_{#MyAppVersion}
+SetupIconFile=pol_tax_icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -31,8 +35,8 @@ Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "E:\pol-tax\dist\pol-tax\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "E:\pol-tax\dist\pol-tax\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\pol-tax\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\pol-tax\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

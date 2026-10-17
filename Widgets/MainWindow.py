@@ -1,6 +1,6 @@
-from PySide6.QtCore import QCoreApplication, QResource, QMetaObject, QRect, QSize, Qt, Slot
+from PySide6.QtCore import QCoreApplication, QResource, QMetaObject, QRect, QSize, Qt, Slot, QThreadPool
 from PySide6.QtGui import QAction, QColor,  QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import (QToolBar, QFileDialog, QGridLayout, QHeaderView, QLayout,
+from PySide6.QtWidgets import (QApplication, QMessageBox, QToolBar, QFileDialog, QGridLayout, QHeaderView, QLayout,
     QMainWindow, QMenu, QMenuBar, QDialog,
     QStatusBar, QTabWidget, QTableView, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget)
@@ -8,19 +8,25 @@ from PySide6.QtWidgets import (QToolBar, QFileDialog, QGridLayout, QHeaderView, 
 from PySide6.QtSvg import QSvgRenderer
 
 import os
-import hashlib
 import logging
 from pathlib import Path
 
 # Ikony - olać ostrzeżenia pycharma, bez tego nie działa, wystarczy jeden import dla całego programu tutaj
-import resources.icons
+import resources.icons  # noqa: F401
 
-from XML.FinancialXMLParser import FinancialXMLParser, FinancialXMLRulesCheck
+from XML.export import ExportResult, export_statement, export_summation
+from Widgets.BackgroundTask import BackgroundTask
 from Widgets.AboutDialog import AboutDialog
 from Widgets.ColorDelegate import ColorDelegate
 from Widgets.SettingsDialog import SettingsDialog
 from Model.PandasModel import PandasModel
 from Settings import Settings
+
+# Positions of the top level items in the document tree
+SECTION_TREE_INDEX = {"introduction": 0, "assets": 1, "passives": 2, "gain_and_loses": 3, "change_in_capital": 4,
+                      "capital_flow": 5, "additional_info": 6}
+SUMMATION_TREE_INDEX = 7
+ATTACHMENTS_TREE_INDEX = 8
 
 
 class MainGUI(QMainWindow):
@@ -36,6 +42,8 @@ class MainGUI(QMainWindow):
         self.settings = Settings()
 
         self.f_xml = None
+        self.export = None
+        self.task = None
         # Icons
         self.excel_icon = QIcon(QPixmap(":/icons/excel_icon.jpg"))
         self.spreadsheet_icon = QIcon(QPixmap(":/icons/table_view_icon.png"))
@@ -165,70 +173,65 @@ class MainGUI(QMainWindow):
             self.setup_excels()
             logging.debug("Zamknięto ustawienia")
 
-    def setup_excels(self):
-        if self.xml_filepath.suffix == '.xml':
-            self.f_xml = FinancialXMLParser(str(self.xml_filepath), self.app_settings)
+    def run_in_background(self, message, on_finished, fn, *args):
+        if self.task is not None:
+            self.statusbar.showMessage("Poczekaj na zakończenie przetwarzania", 2000)
+            return
+        self.set_busy(True, message)
+        self.task = BackgroundTask(fn, *args)
+        self.task.setAutoDelete(False)
+        self.task.signals.finished.connect(lambda result: self.task_done(on_finished, result))
+        self.task.signals.failed.connect(self.task_failed)
+        QThreadPool.globalInstance().start(self.task)
 
-            hash_val = self.get_hash_path(self.xml_filepath)
-
-            aktywa_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_Aktywa.xlsx'
-            pasywa_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_Pasywa.xlsx'
-            introduction_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_Wprowadzenie.xlsx'
-            gains_and_loses_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_RZiS.xlsx'
-
-            self.f_xml.generate_assets_excel(aktywa_excel_path)
-            self.f_xml.generate_passives_excel(pasywa_excel_path)
-            self.f_xml.generate_introduction_excel_from_pd(introduction_excel_path)
-            self.f_xml.generate_gains_and_loses_excel(gains_and_loses_excel_path)
-
-            pdf_paths = self.f_xml.extract_embedded_files(self.app_settings.get_extracted_dir() / hash_val)
-
-            self.clear_second_level_tree()
-
-            self.add_elements_to_table(0, introduction_excel_path,
-                                       {'dataframe': self.f_xml.introduction_pd.rename(
-                                           columns={"Col1": "", "Col2": "", "Col3": ""}),
-                                           'border_list': self.f_xml.introduction_border_list})
-            self.add_elements_to_table(1, aktywa_excel_path,
-                                       {'dataframe': self.f_xml.assets_pd, 'border_list': self.f_xml.assets_border_list})
-            self.add_elements_to_table(2, pasywa_excel_path,
-                                       {'dataframe': self.f_xml.passives_pd,
-                                        'border_list': self.f_xml.passives_border_list})
-            self.add_elements_to_table(3, gains_and_loses_excel_path,
-                                       {'dataframe': self.f_xml.gain_and_loses_pd,
-                                        'border_list': self.f_xml.gain_and_loses_border_list})
-            if self.f_xml.change_in_capital_pd is not None:
-                change_in_capital_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_ZestZmianWKapitale.xlsx'
-                self.f_xml.generate_change_in_capital_excel(change_in_capital_excel_path)
-                self.add_elements_to_table(4, change_in_capital_excel_path,
-                                           {'dataframe': self.f_xml.change_in_capital_pd,
-                                            'border_list': self.f_xml.change_in_capital_border_list})
-            if self.f_xml.capital_flow_pd is not None:
-                capital_flow_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_RachPrzeplywow.xlsx'
-                self.f_xml.generate_capital_flow_excel(capital_flow_excel_path)
-                self.add_elements_to_table(5, capital_flow_excel_path,
-                                           {'dataframe': self.f_xml.capital_flow_pd,
-                                            'border_list': self.f_xml.capital_flow_border_list})
-            if self.f_xml.additional_info_pd is not None:
-                additional_info_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_DodatkoweInfo.xlsx'
-                self.f_xml.generate_additional_info_excel(additional_info_excel_path)
-                self.add_elements_to_table(6, additional_info_excel_path,
-                                           {'dataframe': self.f_xml.additional_info_pd,
-                                            'border_list': self.f_xml.additional_info_border_list})
-            self.add_pdf_element_to_table(8, pdf_paths)
+    def set_busy(self, busy, message=""):
+        for action in (self.actionOpenXML, self.actionSettings, self.actionSumowanie):
+            action.setEnabled(not busy)
+        if busy:
+            self.statusbar.showMessage(message)
+            QApplication.setOverrideCursor(Qt.WaitCursor)
         else:
+            self.statusbar.clearMessage()
+            QApplication.restoreOverrideCursor()
+
+    def task_done(self, on_finished, result):
+        self.task = None
+        self.set_busy(False)
+        on_finished(result)
+
+    def task_failed(self, error):
+        self.task = None
+        self.set_busy(False)
+        logging.error(f"Processing failed:\n{getattr(error, 'formatted_traceback', error)}")
+        QMessageBox.critical(self, "Błąd", f"Nie udało się przetworzyć pliku:\n\n{error}")
+
+    def setup_excels(self):
+        if self.xml_filepath.suffix.lower() != '.xml':
             logging.debug("Path to xml not setup!")
+            return
+        self.run_in_background("Przetwarzanie pliku XML...", self.show_export,
+                               export_statement, self.xml_filepath, self.app_settings)
+
+    def show_export(self, result: ExportResult):
+        self.export = result
+        self.f_xml = result.parser
+        self.clear_second_level_tree()
+        for section_key, (excel_path, dataframe, border_list) in result.sections.items():
+            if section_key == "introduction":
+                dataframe = dataframe.rename(columns={"Col1": "", "Col2": "", "Col3": ""})
+            self.add_elements_to_table(SECTION_TREE_INDEX[section_key], excel_path,
+                                       {'dataframe': dataframe, 'border_list': border_list})
+        self.add_pdf_element_to_table(ATTACHMENTS_TREE_INDEX, result.attachments)
+        self.statusbar.showMessage(f"Wczytano {self.xml_filepath.name}", 3000)
 
     def xml_file_dialog_open(self):
         path_picked = QFileDialog.getOpenFileName(self, 'Wybierz plik XML', self.get_last_file_path_dir(),
                                                    "Pliki xml (*.xml)")
         filepath = path_picked[0]
         if filepath != '':
-            self.statusbar.showMessage("Przetwarzanie pliku XML")
             self.xml_filepath = Path(filepath)
             logging.debug(filepath)
             self.setup_excels()
-            self.statusbar.clearMessage()
 
     def set_table_content(self, dataframe, border_list):
         model = PandasModel(dataframe)
@@ -244,38 +247,23 @@ class MainGUI(QMainWindow):
 
     def clear_second_level_tree(self):
         for i in range(self.treeWidget.topLevelItemCount()):
-            # Get the top-level item
             self.clear_children_at_idx(i)
 
     def clear_children_at_idx(self, idx):
-        top_level_item = self.treeWidget.topLevelItem(idx)
-        # Remove all its child items
-        top_level_item.takeChildren()
+        self.treeWidget.topLevelItem(idx).takeChildren()
 
     def add_elements_to_table(self, item_idx, excel_path, objects_dict):
         item = self.treeWidget.topLevelItem(item_idx)
 
-        # Create the "table" item and add it to the "Wprowadzenie" item
         table_item = QTreeWidgetItem(item)
         table_item.setText(0, "Tabela")
         table_item.setIcon(0, self.spreadsheet_icon)
+        table_item.setData(0, Qt.UserRole, objects_dict)
 
-        # Create the "excel" item and add it to the "Wprowadzenie" item
-        excel_item = QTreeWidgetItem(item)
-        excel_item.setText(0, "Excel")
-
-        # Set the item data for the "table" item to be a string representing the table view
-        table_view_data = objects_dict
-        table_item.setData(0, Qt.UserRole, table_view_data)
-
-        # Set the item data for the "excel" item to be a string representing the path to the Excel file
-        excel_item.setData(0, Qt.UserRole, str(excel_path))
-        excel_item.setIcon(0, self.excel_icon)
+        self.add_excel_element_to_table(item_idx, excel_path)
 
     def add_pdf_element_to_table(self, item_idx, pdf_paths):
         item = self.treeWidget.topLevelItem(item_idx)
-
-        # Create the "table" item and add it to the "Wprowadzenie" item
         for pdf_path in pdf_paths:
             pdf_item = QTreeWidgetItem(item)
             pdf_item.setText(0, "PDF")
@@ -284,11 +272,10 @@ class MainGUI(QMainWindow):
 
     def add_excel_element_to_table(self, item_idx, excel_path):
         item = self.treeWidget.topLevelItem(item_idx)
-        # Create the "table" item and add it to the "Wprowadzenie" item
-        pdf_item = QTreeWidgetItem(item)
-        pdf_item.setText(0, "Excel")
-        pdf_item.setData(0, Qt.UserRole, str(excel_path))
-        pdf_item.setIcon(0, self.excel_icon)
+        excel_item = QTreeWidgetItem(item)
+        excel_item.setText(0, "Excel")
+        excel_item.setData(0, Qt.UserRole, str(excel_path))
+        excel_item.setIcon(0, self.excel_icon)
 
     def show_about(self):
         about_dialog = AboutDialog(self)
@@ -300,8 +287,7 @@ class MainGUI(QMainWindow):
             objects_dict = item.data(0, Qt.UserRole)
             self.set_table_content(objects_dict["dataframe"], objects_dict["border_list"])
             self.tabWidget.setCurrentIndex(1)
-            logging.debug(f"Opening table")
-            # Do something with the table view data, such as show a table view widget
+            logging.debug("Opening table")
         elif item.text(0) == "Excel":
             excel_path = item.data(0, Qt.UserRole)
             logging.debug(f"Opening Excel {excel_path}")
@@ -309,27 +295,19 @@ class MainGUI(QMainWindow):
         elif item.text(0) == "PDF":
             pdf_path = item.data(0, Qt.UserRole)
             logging.debug(f"Opening {pdf_path}")
-            # subprocess.run(r'"{}"'.format(pdf_path), shell=True)
             os.startfile(pdf_path)
 
     def xml_summation_check(self):
-        if self.f_xml is not None:
-            tree_id_for_summation = 7
-            self.clear_children_at_idx(tree_id_for_summation)
-            hash_val = self.get_hash_path(self.xml_filepath)
-            f_xml_rules = FinancialXMLRulesCheck(self.f_xml)
-            summation_excel_path = f'{self.app_settings.get_excel_dir()}/{hash_val}_summation.xlsx'
-            f_xml_rules.to_excel(summation_excel_path)
-            self.add_excel_element_to_table(tree_id_for_summation, summation_excel_path)
-        else:
-            self.statusbar.showMessage("Brak excela!", timeout=1500)
-            logging.debug("Brak excela!")
+        if self.export is None:
+            self.statusbar.showMessage("Najpierw otwórz plik XML", 1500)
+            return
+        self.run_in_background("Sprawdzanie sum...", self.show_summation,
+                               export_summation, self.export.parser, self.app_settings.get_excel_dir(),
+                               self.export.prefix)
 
-    def get_hash_path(self, path: Path):
-        # File name for readability plus a hash of the full path, so same-named XMLs from different folders don't collide
-        sha = hashlib.sha256()
-        sha.update(str(path.resolve()).encode())
-        return f"{path.stem}_{sha.hexdigest()[:8]}"
+    def show_summation(self, summation_path):
+        self.clear_children_at_idx(SUMMATION_TREE_INDEX)
+        self.add_excel_element_to_table(SUMMATION_TREE_INDEX, summation_path)
 
     def load_svg_and_color(self, icon_res_path, color):
         renderer = QSvgRenderer()

@@ -1,6 +1,5 @@
 from pathlib import Path
 import sys
-import numpy as np
 
 
 def _app_root() -> Path:
@@ -11,8 +10,8 @@ def _app_root() -> Path:
 
 
 class Version(object):
-    # Major.Minor.Patch.Build
-    _version_file = _app_root() / "resources" / "version.npy"
+    # Major.Minor.Patch.Build, kept in a plain text file - the single source of the app version
+    _version_file = _app_root() / "resources" / "version.txt"
     __instance = None
 
     def __init__(self):
@@ -20,11 +19,9 @@ class Version(object):
             return
         self.__initialized = True
         if self._version_file.exists():
-            with self._version_file.open(mode='rb') as np_file:
-                self.version_np = np.load(np_file)
+            self.version = [int(x) for x in self._version_file.read_text(encoding="utf8").strip().split(".")]
         else:
-            self.version_np = np.zeros(4, dtype=int)
-            self.version_np[2] = 1
+            self.version = [0, 0, 1, 0]
 
     def __new__(cls):
         if cls.__instance is None:
@@ -33,43 +30,35 @@ class Version(object):
         return cls.__instance
 
     def get_version(self):
-        return self.version_np
+        return self.version
 
     def __repr__(self):
-        return f"{self.version_np[0]}.{self.version_np[1]}.{self.version_np[2]}.{self.version_np[3]}"
+        return ".".join(str(x) for x in self.version)
 
     def __str__(self):
-        return f"{self.version_np[0]}.{self.version_np[1]}.{self.version_np[2]}.{self.version_np[3]}"
+        return self.__repr__()
 
     def up_build(self):
-        self.version_np[3] += 1
+        self.version[3] += 1
         return self.get_version()
 
     def up_patch(self):
-        major_val = self.version_np[0]
-        minor_val = self.version_np[1]
-        patch_val = self.version_np[2]
+        major_val, minor_val, patch_val, _ = self.version
         if patch_val + 1 >= 10:
             patch_val = 0
             minor_val += 1
         else:
             patch_val += 1
 
-        self.version_np[0] = major_val
-        self.version_np[1] = minor_val
-        self.version_np[2] = patch_val
-        self.version_np[3] = 0
+        self.version = [major_val, minor_val, patch_val, 0]
         return self.get_version()
 
     def up_major(self):
-        self.version_np[0] += 1
-        self.version_np[1] += 0
-        self.version_np[2] += 0
-        self.version_np[3] += 0
+        self.version[0] += 1
         return self.get_version()
 
     def set_version(self, major, minor, patch, build):
-        self.version_np = np.array([major, minor, patch, build])
+        self.version = [major, minor, patch, build]
 
     def __enter__(self):
         return self
@@ -78,12 +67,10 @@ class Version(object):
         self.save()
 
     def save(self):
-        with self._version_file.open(mode='wb') as output_file:
-            np.save(output_file, self.version_np)
+        self._version_file.write_text(str(self) + "\n", encoding="utf8")
 
 
 if __name__ == "__main__":
     ver = Version()
-    # ver.set_version(0, 0, 1, 0)
     ver.up_patch()
     ver.save()

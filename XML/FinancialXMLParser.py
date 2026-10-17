@@ -4,8 +4,8 @@ from urllib.parse import unquote
 from urllib.parse import urlparse
 from pathlib import Path, PureWindowsPath
 import xlsxwriter
-import argparse
 import re
+import copy
 import base64
 import logging
 import string
@@ -14,6 +14,7 @@ from decimal import Decimal, InvalidOperation
 
 # My files Import
 from XML.xsd_downloader import download_schema, schema_cache_dir
+from XML.rules import RULES
 from Settings import Settings
 
 roman2arabic = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10, 'XI': 11,
@@ -49,6 +50,35 @@ def excel_style_format(workbook):
     return workbook, header_cell_format, normal_cell_format, number_format
 
 
+def strip_namespace(tag):
+    last_char = tag.find('}')
+    if last_char > 0:
+        tag = tag[last_char + 1:]
+    return tag
+
+
+def xml_tag_to_dict(xml_tag, xml_dict):
+    tag = strip_namespace(xml_tag.tag)
+
+    text = xml_tag.text.strip() if xml_tag.text is not None else ""
+    if text == "":
+        xml_dict[tag] = {}
+    else:
+        xml_dict[tag] = text
+
+    for elem in xml_tag:
+        xml_dict[tag] = xml_tag_to_dict(elem, xml_dict[tag])
+
+    return xml_dict
+
+
+def find_first_tag(root, tag_name):
+    for element in root.iter():
+        if element.tag.endswith(tag_name):
+            return element
+    return None
+
+
 def col_size(input_string):
     return len(str(input_string)) - 2 # + 5
 
@@ -78,7 +108,7 @@ class FinancialXMLParts:
 
     def determine_main_key_existance(self, main_keys):
         for key in main_keys:
-            tag_elem = self.find_tags_ending_with(key)
+            tag_elem = find_first_tag(self.xml_root, key)
             if tag_elem is not None:
                 return tag_elem, key
         return None, None
@@ -87,9 +117,7 @@ class FinancialXMLParts:
         if self.tag_element is None:
             return None
 
-        xml_dict = {}
-        xml_dict = self.xml_tag_to_dict(self.tag_element, xml_dict)
-        return xml_dict
+        return xml_tag_to_dict(self.tag_element, {})
 
     def flatten_xml_dict(self):
         logging.debug(f"Flattening xml dict for {self.main_key}")
@@ -135,7 +163,6 @@ class FinancialXMLParts:
 
     def get_excel(self, out_file_name):
         logging.debug(f"Generating excel file for {self.main_key}")
-        title_row = None
 
         workbook = xlsxwriter.Workbook(out_file_name)
         worksheet = workbook.add_worksheet()
@@ -149,12 +176,6 @@ class FinancialXMLParts:
 
         col_max_size = check_cols_max_size(col_max_size, cols)
         i = 1
-        if title_row is not None:
-            worksheet.write(1, 0, "", header_cell_format)
-            worksheet.write(1, 1, "", header_cell_format)
-            worksheet.write(1, 2, "", header_cell_format)
-            worksheet.merge_range(f'A2:C2', self.xsd_dict[title_row], header_cell_format)
-            i += 1
         j = 0
         for index, row in self.pd.iterrows():
             if self.border_list[j] == 1:
@@ -183,17 +204,6 @@ class FinancialXMLParts:
 
         workbook.close()
 
-    def find_tags_ending_with(self, tag_name, full_search=False):
-        tags = []
-        for element in self.xml_root.iter():
-            if element.tag.endswith(tag_name):
-                if full_search:
-                    tags.append(element)
-                else:
-                    return element
-
-        return tags if full_search else None
-
     def recursive_cost_dict(self, key, value, up_key, main_dict):
         current_dict = main_dict['Koszta']
         if up_key is not None:
@@ -215,33 +225,14 @@ class FinancialXMLParts:
 
         return main_dict
 
-    def xml_tag_to_dict(self, xml_tag, xml_dict):
-        tag = xml_tag.tag
-        lastChar = tag.find('}')
-        if lastChar > 0:
-            tag = tag[lastChar + 1:]
-
-        text = xml_tag.text.strip() if xml_tag.text is not None else ""
-        if text == "":
-            xml_dict[tag] = {}
-        else:
-            xml_dict[tag] = text
-
-        for elem in xml_tag:
-            xml_dict[tag] = self.xml_tag_to_dict(elem, xml_dict[tag])
-
-        return xml_dict
 
 
 class FinancialXMLParser:
     def __init__(self, xml_path: str, app_settings: Settings):
         self.app_settings = app_settings
-        self.cost_tag = "Kwota"
-        self.cost_tag_set = set()
         self.cost_tag_1 = "KwotaA"
         self.cost_tag_2 = "KwotaB"
         self.cost_tag_3 = "KwotaC"
-        self.special_tags = ['PozycjaUszczegolawiajaca']
         self.xml_path = xml_path
         self.tree = ET.parse(xml_path)
         self.root = self.tree.getroot()
@@ -267,45 +258,28 @@ class FinancialXMLParser:
         self.change_in_capital_obj = FinancialXMLParts(["ZestZmianWKapitale"], self.root, self.xsd_dict)
         self.capital_flow_obj = FinancialXMLParts(["RachPrzeplywow"], self.root, self.xsd_dict)
 
-        # Embedde file extraction
+        # Embedded file extraction
         self.list_of_dict_embedded_files = self.get_embedded_files()
-        # Aktywa pd
-        # self.assets_pd, self.assets_border_list = self.generate_assets_pd()
-        self.assets_pd, self.assets_border_list = self.assets_obj.get_pd()
-        # Pasywa pd
-        self.passives_pd, self.passives_border_list = self.passives_obj.get_pd()
-        # Rachunek zysków i start
-        # self.gain_and_loses_dict, self.gain_and_loses_title_tag = self.find_gains_and_loses()
-        self.gain_and_loses_pd, self.gain_and_loses_border_list = self.gains_and_losses_obj.get_pd() #self.generate_gains_and_loses_pd()
-        # Zestawienie zmian w kapitale
-        # self.change_in_capital_dict = self.find_change_in_capital()
-        self.change_in_capital_pd, self.change_in_capital_border_list = self.change_in_capital_obj.get_pd()
-        # Rachunek Przepływów
-        # self.capital_flow_dict, self.capital_flow_title_tag = self.find_capital_flow()
-        self.capital_flow_pd, self.capital_flow_border_list = self.capital_flow_obj.get_pd()
+        self.assets_pd, self.assets_border_list = self.assets_obj.pd, self.assets_obj.border_list
+        self.passives_pd, self.passives_border_list = self.passives_obj.pd, self.passives_obj.border_list
+        self.gain_and_loses_pd = self.gains_and_losses_obj.pd
+        self.gain_and_loses_border_list = self.gains_and_losses_obj.border_list
+        self.change_in_capital_pd = self.change_in_capital_obj.pd
+        self.change_in_capital_border_list = self.change_in_capital_obj.border_list
+        self.capital_flow_pd, self.capital_flow_border_list = self.capital_flow_obj.pd, self.capital_flow_obj.border_list
         # Informacja dodatkowa
         self.additional_info_dict = self.find_additional_info()
         self.additional_info_pd, self.additional_info_border_list = self.generate_additional_info_pd()
 
-        logging.debug('test')
-
-    def remove_curly_braces(self, name):
-        last_char = name.find('}')
-        if last_char > 0:
-            name = name[last_char + 1:]
-        return name
-
     def get_schema_url(self):
         schema_url = None
         for elem_k, elem_v in self.root.attrib.items():
-            if self.remove_curly_braces(elem_k) == "schemaLocation":
+            if strip_namespace(elem_k) == "schemaLocation":
                 last_ocr = elem_v.rfind("http")
                 schema_url = unquote(elem_v[last_ocr:])
                 parse = urlparse(schema_url)
                 if parse.netloc == 'www.mf.gov.pl':
                     schema_url = parse._replace(netloc='www.gov.pl')._replace(scheme='https').geturl()
-                    # parse.netloc =
-                    # parse.scheme = 'https'
 
         return schema_url
 
@@ -334,94 +308,12 @@ class FinancialXMLParser:
 
         return xsd_map
 
-    def is_substring_at_end(self, substring, string):
-        substring_length = len(substring)
-        string_length = len(string)
-
-        if substring_length > string_length:
-            return False
-
-        end_substring = string[-substring_length:]
-
-        if end_substring == substring:
-            return True
-        else:
-            return False
-
-    def find_tags_with_name(self, root, tag):
-        tags = [element for element in root.iter() if element.tag.endswith(tag)]
-        return tags
-
-    def recurse_search(self, root, tag, full_search=False):
-        found_elems = []
-        for elem in root:
-            # if tag in elem.tag:
-            #     return elem
-            if self.is_substring_at_end(tag, elem.tag):
-                if full_search:
-                    found_elems.append(elem)
-                return elem
-            else:
-                finded = self.recurse_search(elem, tag, full_search=full_search)
-                if finded is not None:
-                    return finded
-
-        return None if len(found_elems) == 0 else found_elems
-
-    def r_search(self, root, tag):
-        if tag in root.tag:
-            return root
-        else:
-            for elem in root:
-                return self.r_search(elem, tag)
-
-    def xml_tag_to_dict(self, xml_tag, xml_dict):
-        tag = xml_tag.tag
-        lastChar = tag.find('}')
-        if lastChar > 0:
-            tag = tag[lastChar + 1:]
-
-        text = xml_tag.text.strip() if xml_tag.text is not None else ""
-        if text == "":
-            xml_dict[tag] = {}
-        else:
-            xml_dict[tag] = text
-
-        for elem in xml_tag:
-            xml_dict[tag] = self.xml_tag_to_dict(elem, xml_dict[tag])
-
-        return xml_dict
-
-    def go_deeper(self, d, tag1, tag2, main_tag, new_d):
-        for k, v in d.items():
-            if k == tag1 or k == tag2:
-                new_d[main_tag][k] = Decimal(v)
-                continue
-
-            if any(x in k for x in self.special_tags):
-                logging.debug(k)
-                detail_item_tag = f"{main_tag}_{k}"
-                self.xsd_dict[detail_item_tag] = v['NazwaPozycji']
-                new_d[detail_item_tag] = {}
-                self.go_deeper(v['KwotyPozycji'], tag1, tag2, detail_item_tag, new_d)
-                continue
-            #
-            # if k is self.special_tags:
-            #     logging.debug(k)
-            #     new_d[main_tag] = v
-            #     continue
-            if k == self.special_tags[0]:
-                logging.debug(f'Jestem w else równym {k}')
-            new_d[k] = {}
-            self.go_deeper(v, tag1, tag2, k, new_d)
-
-        return new_d
-
     def find_introduction(self):
         # WprowadzenieDoSprawozdaniaFinansowego
-        introduction_tag_elem = self.recurse_search(self.root, 'WprowadzenieDoSprawozdaniaFinansowego')
-        introduction_dict_xml = {}
-        introduction_dict_xml = self.xml_tag_to_dict(introduction_tag_elem, introduction_dict_xml)
+        introduction_tag_elem = find_first_tag(self.root, 'WprowadzenieDoSprawozdaniaFinansowego')
+        if introduction_tag_elem is None:
+            return {'WprowadzenieDoSprawozdaniaFinansowego': {}}
+        introduction_dict_xml = xml_tag_to_dict(introduction_tag_elem, {})
 
         ret_dict = {'WprowadzenieDoSprawozdaniaFinansowego': {}}
         for k, v in introduction_dict_xml['WprowadzenieDoSprawozdaniaFinansowego'].items():
@@ -433,10 +325,9 @@ class FinancialXMLParser:
 
     def find_additional_info(self):
         # InformacjaDodatkowaDotyczacaPodatkuDochodowego
-        additional_info_tag_elem = self.recurse_search(self.root, 'InformacjaDodatkowaDotyczacaPodatkuDochodowego')
+        additional_info_tag_elem = find_first_tag(self.root, 'InformacjaDodatkowaDotyczacaPodatkuDochodowego')
         if additional_info_tag_elem is not None:
-            additional_info_dict_xml = {}
-            additional_info_dict_xml = self.xml_tag_to_dict(additional_info_tag_elem, additional_info_dict_xml)
+            additional_info_dict_xml = xml_tag_to_dict(additional_info_tag_elem, {})
             additional_info_dict = self.reorganize_additional_info_dict(
                 additional_info_dict_xml['InformacjaDodatkowaDotyczacaPodatkuDochodowego'])
             return additional_info_dict
@@ -471,53 +362,9 @@ class FinancialXMLParser:
                 pass
         return data
 
-    def travel_dict_reccur(self, key, value, dict_to_fill, upper_key, level_0_key=None, level_1_key=None, level=0):
-        if type(value) is dict:
-            for k, v in value.items():
-                if level == 0:
-                    level_1_key = key
-                dict_to_fill = self.travel_dict_reccur(k, v, dict_to_fill, key, level_0_key, level_1_key, level + 1)
-        else:
-            if level == 0:
-                if level_0_key not in dict_to_fill:
-                    dict_to_fill[level_0_key] = {}
-                dict_to_fill[level_0_key][key] = value
-            elif level == 1:
-                if level_1_key not in dict_to_fill[level_0_key]:
-                    dict_to_fill[level_0_key][level_1_key] = []
-                dict_to_fill[level_0_key][level_1_key].append((upper_key, key, value))
-            else:
-                dict_to_fill[level_0_key][level_1_key].append((upper_key, key, value))
-
-        return dict_to_fill
-
     def get_embedded_files(self):
-        embedded_tag_elem = self.find_tags_with_name(self.root, 'DodatkoweInformacjeIObjasnienia')
-        list_of_embedded_dicts = []
-        for embedded_tag in embedded_tag_elem:
-            embedded_dict_xml = {}
-            embedded_dict_xml = self.xml_tag_to_dict(embedded_tag, embedded_dict_xml)
-            list_of_embedded_dicts.append(embedded_dict_xml)
-        return list_of_embedded_dicts
-
-    def reccur_cost_dict(self, key, value, up_key, main_dict):
-        if self.cost_tag in key:
-            if 'Koszta' not in main_dict[up_key]:
-                self.cost_tag_set.add(key)
-                main_dict[up_key]['Koszta'] = {key: Decimal(value)}
-            else:
-                main_dict[up_key]['Koszta'][key] = Decimal(value)
-        elif type(value) == dict:
-            main_dict[key] = {}
-            for k, v in value.items():
-                self.reccur_cost_dict(k, v, key, main_dict)
-        elif any(x in key for x in self.special_tags):
-            detail_item_tag = f"{up_key}_{key}"
-            self.xsd_dict[detail_item_tag] = value['NazwaPozycji']
-            main_dict[detail_item_tag] = {}
-            self.reccur_cost_dict(detail_item_tag, v['KwotyPozycji'], up_key, main_dict)
-
-        return main_dict
+        return [xml_tag_to_dict(element, {}) for element in self.root.iter()
+                if element.tag.endswith('DodatkoweInformacjeIObjasnienia')]
 
     def reccur_flatten(self, reccur_obj, upper_tag, return_dict: dict):
         if type(reccur_obj) == dict:
@@ -699,12 +546,6 @@ class FinancialXMLRulesCheck:
     def __init__(self, f_xml: FinancialXMLParser):
         logging.debug(f"Beggining rulse check for {f_xml.xml_path}")
         self.f_xml = f_xml
-        letter_range = 'A-D'
-        logging.debug(f'Range {letter_range} list: {self.letter_range_to_list(letter_range)}')
-        number_range = '1-8'
-        logging.debug(f'Range {number_range} list: {self.number_range_to_list(number_range)}')
-        roman_range = 'I-V'
-        logging.debug(f'Range {roman_range} list: {self.roman_numbers_range_to_list(roman_range)}')
 
         self.pds = {'assets': {'pd': self.f_xml.assets_pd, 'border_list': self.f_xml.assets_border_list},
                     'passives': {'pd': self.f_xml.passives_pd, 'border_list': self.f_xml.passives_border_list},
@@ -719,166 +560,7 @@ class FinancialXMLRulesCheck:
                     'constants': {'pd': self.constants_pd()}
                     }
 
-        self.rules = {'assets': {'': [{'value': {'index': '', 'source': self.f_xml.passives_pd}, 'years': [1, 2]},
-                                      {'range': 'A-D', 'years': [1, 2]}],
-                                 'A': [{'range': 'A.I-V', 'years': [1, 2]}],
-                                 'A.I': [{'range': 'A.I.1-4', 'years': [1, 2]}],
-                                 'A.II': [{'range': 'A.II.1-3', 'years': [1, 2]}],
-                                 'A.II.1': [{'range': 'A.II.1.A-E', 'years': [1, 2]}],
-                                 'A.III': [{'range': 'A.III.1-3', 'years': [1, 2]}],
-                                 'A.IV': [{'range': 'A.IV.1-4', 'years': [1, 2]}],
-                                 'A.IV.3': [{'range': 'A.IV.3.A-C', 'years': [1, 2]}],
-                                 'A.IV.3.A': [{'range': 'A.IV.3.A.1-4', 'years': [1, 2]}],
-                                 'A.IV.3.B': [{'range': 'A.IV.3.B.1-4', 'years': [1, 2]}],
-                                 'A.IV.3.C': [{'range': 'A.IV.3.C.1-4', 'years': [1, 2]}],
-                                 'A.V': [{'range': 'A.V.1-2', 'years': [1, 2]}],
-                                 'B': [{'range': 'B.I-IV', 'years': [1, 2]}],
-                                 'B.I': [{'range': 'B.I.1-5', 'years': [1, 2]}],
-                                 'B.II': [{'range': 'B.II.1-3', 'years': [1, 2]}],
-                                 'B.II.1': [{'range': 'B.II.1.A-B', 'years': [1, 2]}],
-                                 'B.II.1.A': [{'range': 'B.II.1.A.1-2', 'years': [1, 2]}],
-                                 'B.II.2': [{'range': 'B.II.2.A-B', 'years': [1, 2]}],
-                                 'B.II.2.A': [{'range': 'B.II.2.A.1-2', 'years': [1, 2]}],
-                                 'B.II.3': [{'range': 'B.II.3.A-D', 'years': [1, 2]}],
-                                 'B.II.3.A': [{'range': 'B.II.3.A.1-2', 'years': [1, 2]}],
-                                 'B.III': [{'range': 'B.III.1-2', 'years': [1, 2]}],
-                                 'B.III.1': [{'range': 'B.III.1.A-C', 'years': [1, 2]}],
-                                 'B.III.1.A': [{'range': 'B.III.1.A.1-4', 'years': [1, 2]}],
-                                 'B.III.1.B': [{'range': 'B.III.1.B.1-4', 'years': [1, 2]}],
-                                 'B.III.1.C': [{'range': 'B.III.1.C.1-3', 'years': [1, 2]}]},
-                      'passives': {
-                          '': [{'range': 'A-B', 'years': [1, 2]}],
-                          'A': [{'range': 'A.I-VII', 'years': [1, 2]}],
-                          'B': [{'range': 'B.I-IV', 'years': [1, 2]}],
-                          'B.I': [{'range': 'B.I.1-3', 'years': [1, 2]}],
-                          'B.I.2': [{'range': 'B.I.2.1-2', 'years': [1, 2]}],
-                          'B.I.3': [{'range': 'B.I.3.1-2', 'years': [1, 2]}],
-                          'B.II': [{'range': 'B.II.1-3', 'years': [1, 2]}],
-                          'B.II.3': [{'range': 'B.II.3.A-E', 'years': [1, 2]}],
-                          'B.III': [{'range': 'B.III.1-4', 'years': [1, 2]}],
-                          'B.III.1': [{'range': 'B.III.1.A-B', 'years': [1, 2]}],
-                          'B.III.1.A': [{'range': 'B.III.1.A.1-2', 'years': [1, 2]}],
-                          'B.III.2': [{'range': 'B.III.2.A-B', 'years': [1, 2]}],
-                          'B.III.2.A': [{'range': 'B.III.2.A.1-2', 'years': [1, 2]}],
-                          'B.III.3': [{'range': 'B.III.3.A-I', 'years': [1, 2]}],
-                          'B.III.3.D': [{'range': 'B.III.3.D.1-2', 'years': [1, 2]}],
-                          'B.IV': [{'range': 'B.IV.1-2', 'years': [1, 2]}],
-                          'B.IV.2': [{'range': 'B.IV.2.1-2', 'years': [1, 2]}]},
-                      'gain_and_loses': {
-                          'A': [{'range': 'A.I-IV', 'years': [1, 2]}],
-                          'B': [{'range': 'B.I-VIII', 'years': [1, 2]}],
-                          'C': [{'diff_range': 'A-B', 'years': [1, 2]}],
-                          'D': [{'range': 'D.I-IV', 'years': [1, 2]}],
-                          'E': [{'range': 'E.I-III', 'years': [1, 2]}],
-                          'F': [{'special': 'C+D-E', 'years': [1, 2]}],
-                          'G': [{'range': 'G.I-V', 'years': [1, 2]}],
-                          'G.I': [{'range': 'G.I.A-B', 'years': [1, 2]}],
-                          'H': [{'range': 'H.I-IV', 'years': [1, 2]}],
-                          'I': [{'special': 'F+G-H', 'years': [1, 2]}],
-                          'J': [{'operations': [{'source': 'additional_info', 'index': 'K_RB', 'year': 1},
-                                                {'source': 'assets', 'index': 'A.V.1', 'year': 1},
-                                                {'source': 'assets', 'index': 'A.V.1', 'year': 2}, {'operator': '-'},
-                                                {'operator': '-'}, {'source': 'assets', 'index': 'B.I.1', 'year': 1},
-                                                {'source': 'assets', 'index': 'B.I.1', 'year': 2}, {'operator': '-'},
-                                                {'operator': '+'}], 'years': [1]}],
-                          'L': [{'special': 'I-J-K', 'years': [1, 2]}]},
-                      'change_in_capital': {
-                          'I': [{'value': {'index': 'II', 'source': self.f_xml.change_in_capital_pd, 'year': 2},
-                                 'years': [1]},
-                                {'range': 'IA.1-5', 'years': [1, 2]}],
-                          'IA': [{'special': 'I+I.1+I.2', 'years': [1, 2]}],
-                          'IA.1': [{'value': {'index': 'IA.1.2', 'source': self.f_xml.change_in_capital_pd, 'year': 2},
-                                    'years': [1]}],
-                          'IA.1.1': [{'range': 'IA.1.1.A-B', 'years': [1, 2]}],
-                          'IA.1.2': [{'special': 'IA.1+IA.1.1', 'years': [1, 2]}],
-                          'IA.2': [{'value': {'index': 'IA.2.2', 'source': self.f_xml.change_in_capital_pd, 'year': 2},
-                                    'years': [1]}],
-                          'IA.2.1': [{'diff_range': 'IA.2.1.A-B', 'years': [1, 2]}],
-                          'IA.2.2': [{'special': 'IA.2+IA.2.1', 'years': [1, 2]}],
-                          'IA.3': [{'value': {'index': 'IA.3.2', 'source': self.f_xml.change_in_capital_pd, 'year': 2},
-                                    'years': [1]}],
-                          'IA.3.1': [{'diff_range': 'IA.3.1.A-B', 'years': [1, 2]}],
-                          'IA.3.2': [{'special': 'IA.3+IA.3.1', 'years': [1, 2]}],
-                          'IA.4': [{'value': {'index': 'IA.4.2', 'source': self.f_xml.change_in_capital_pd, 'year': 2},
-                                    'years': [1]}],
-                          'IA.4.1': [{'diff_range': 'IA.4.1.A-B', 'years': [1, 2]}],
-                          'IA.4.2': [{'special': 'IA.4+IA.4.1', 'years': [1, 2]}],
-                          'IA.5': [{'operations': [{'source': 'change_in_capital', 'index': 'IA.5.7', 'year': 2},
-                                                   {'source': 'change_in_capital', 'index': 'IA.6', 'year': 2},
-                                                   {'operator': '+'}], 'years': [1]},
-                                   {'special': 'IA.5.1-IA.5.4', 'years': [1, 2]}],
-                          'IA.5.2': [{'special': 'IA.5.1+IA.5.1.1+IA.5.1.2', 'years': [1, 2]}],
-                          'IA.5.3': [{'special': 'IA.5.2+IA.5.2.A-IA.5.2.B', 'years': [1, 2]}],
-                          'IA.5.5': [{'special': 'IA.5.4+IA.5.4.1-IA.5.4.2', 'years': [1, 2]}],
-                          'IA.5.6': [{'special': 'IA.5.5+IA.5.5.A-IA.5.5.B', 'years': [1, 2]}],
-                          'IA.5.7': [{'special': 'IA.5.3-IA.5.6', 'years': [1, 2]}],
-                          'IA.6': [{'diff_range': 'IA.6.A-C', 'years': [1, 2]}],
-                          'IA.6.A': [
-                              {'value': {'index': 'L', 'source': self.f_xml.gain_and_loses_pd}, 'years': [1, 2]}],
-                          'II': [{'special': 'IA.1.2+IA.2.2+IA.3.2+IA.4.2+IA.5.7+IA.6', 'years': [1, 2]}]},
-                      'capital_flow': {
-                          'A.I': [
-                              {'value': {'index': 'IA.6', 'source': self.f_xml.change_in_capital_pd}, 'years': [1, 2]}],
-                          'A.II': [{'range': 'A.II.1-10', 'years': [1, 2]}],
-                          'A.II.5': [{'operations': [{'source': 'passives', 'index': 'B.I', 'year': 1},
-                                                     {'source': 'passives', 'index': 'B.I', 'year': 2},
-                                                     {'operator': '-'}], 'years': [1]}],
-                          'A.II.6': [{'operations': [{'source': 'assets', 'index': 'B.I', 'year': 1},
-                                                     {'source': 'assets', 'index': 'B.I', 'year': 2},
-                                                     {'operator': '-'},
-                                                     {'source': 'constants', 'index': '-1', 'year': 1},
-                                                     {'operator': '*'}], 'years': [1]}],
-                          'A.II.7': [{'operations': [{'source': 'assets', 'index': 'A.III', 'year': 1},
-                                                     {'source': 'assets', 'index': 'B.II', 'year': 1},
-                                                     {'operator': '+'},
-                                                     {'source': 'assets', 'index': 'A.III', 'year': 2},
-                                                     {'source': 'assets', 'index': 'B.II', 'year': 2},
-                                                     {'operator': '+'}, {'operator': '-'},
-                                                     {'source': 'constants', 'index': '-1', 'year': 1},
-                                                     {'operator': '*'}], 'years': [1]}],
-                          'A.II.8': [{'operations': [{'source': 'passives', 'index': 'B.III', 'year': 1},
-                                                     {'source': 'passives', 'index': 'B.III.3.A', 'year': 1},
-                                                     {'operator': '-'},
-                                                     {'source': 'passives', 'index': 'B.III', 'year': 2},
-                                                     {'source': 'passives', 'index': 'B.III.3.A', 'year': 2},
-                                                     {'operator': '-'}, {'operator': '-'},
-                                                     {'source': 'constants', 'index': '-1', 'year': 1},
-                                                     {'operator': '*'}], 'years': [1]}],
-                          'A.II.9': [{'operations': [{'source': 'passives', 'index': 'B.IV', 'year': 1},
-                                                     {'source': 'passives', 'index': 'B.IV', 'year': 2},
-                                                     {'operator': '-'},
-                                                     {'source': 'assets', 'index': 'B.IV', 'year': 1},
-                                                     {'source': 'assets', 'index': 'B.IV', 'year': 2},
-                                                     {'operator': '-'},
-                                                     {'operator': '-'}, {'source': 'assets', 'index': 'A.V', 'year': 1},
-                                                     {'source': 'assets', 'index': 'A.V', 'year': 2}, {'operator': '-'},
-                                                     {'operator': '-'},
-                                                     ], 'years': [1]}],
-                          'A.III': [{'range': 'A.I-II', 'years': [1, 2]}],
-                          'B.I': [{'range': 'B.I.1-4', 'years': [1, 2]}],
-                          'B.I.3': [{'range': 'B.I.3.A-B', 'years': [1, 2]}],
-                          'B.I.3.B': [{'range': 'B.I.3.B.1-5', 'years': [1, 2]}],
-                          'B.II': [{'range': 'B.II.1-4', 'years': [1, 2]}],
-                          'B.II.3': [{'range': 'B.II.3.A-B', 'years': [1, 2]}],
-                          'B.II.3.B': [{'range': 'B.II.3.B.1-2', 'years': [1, 2]}],
-                          'B.III': [{'diff_range': 'B.I-II', 'years': [1, 2]}],
-                          'C.I': [{'range': 'C.I.1-4', 'years': [1, 2]}],
-                          'C.II': [{'range': 'C.II.1-9', 'years': [1, 2]}],
-                          'C.III': [{'diff_range': 'C.I-II', 'years': [1, 2]}],
-                          'D': [{'special': 'A.III+B.III+C.III', 'years': [1, 2]},
-                                {'special': 'E+E.1', 'years': [1, 2]}],
-                          'E': [{'operations': [{'source': 'assets', 'index': 'B.III.1.C', 'year': 1},
-                                                {'source': 'assets', 'index': 'B.III.1.C', 'year': 2},
-                                                {'operator': '-'}], 'years': [1]}],
-                          'F': [
-                              {'value': {'index': 'G', 'source': self.f_xml.capital_flow_pd, 'year': 2}, 'years': [1]}],
-                          'G': [{'special': 'D+F', 'years': [1, 2]}]},
-                      'additional_info': {
-                          'A_RB': [{'value': {'index': 'I', 'source': self.f_xml.gain_and_loses_pd, 'year': 1},
-                                    'years': [1]}],
-                          'A_RP': [{'value': {'index': 'I', 'source': self.f_xml.gain_and_loses_pd, 'year': 2},
-                                    'years': [1]}]}
-                      }
+        self.rules = copy.deepcopy(RULES)
         if self.f_xml.gains_and_losses_obj.main_key != 'RZiSPor':
             self.drop_gain_and_loses_rules()
 
@@ -888,13 +570,11 @@ class FinancialXMLRulesCheck:
         letters mean different positions, so every rule that uses the P&L would compare the wrong numbers.
         """
         logging.info("RZiS is not in the comparative variant, skipping rules that depend on it")
-        gain_and_loses_pd = self.f_xml.gain_and_loses_pd
         self.rules.pop('gain_and_loses', None)
         for subset_rules in self.rules.values():
             for index in list(subset_rules.keys()):
                 subset_rules[index] = [rule for rule in subset_rules[index]
-                                       if not ('value' in rule and rule['value'].get('source') is gain_and_loses_pd
-                                               and gain_and_loses_pd is not None)
+                                       if rule.get('value', {}).get('source') != 'gain_and_loses'
                                        and not any(op.get('source') == 'gain_and_loses'
                                                    for op in rule.get('operations', []))]
                 if len(subset_rules[index]) == 0:
@@ -1012,14 +692,11 @@ class FinancialXMLRulesCheck:
                     sum_val = Decimal(0.0)
                     for dec_val_ind in range_list:
                         sum_val += self.get_pd_val(picked_pd, dec_val_ind, year, p_pd_columns)
-                        # sum_val += picked_pd.loc[dec_val_ind][p_pd_columns[year]]
-                    # sum_val = picked_pd.loc[index][p_pd_columns[year]] - sum_val
                     sum_val = checked_value - sum_val
                 elif 'value' in list_elem:
                     # Jeżeli pod indeksem value jest indeks data bierzę się gołą wartość i odejmuje od aktualnie
                     # sprawdzanej wartości, najgorsza możliwość bo nie jak przypilnować indeksu
                     if 'data' in list_elem['value']:
-                        # sum_val = picked_pd.loc[index][p_pd_columns[year]] - list_elem['value']['data']
                         sum_val = checked_value - list_elem['value']['data']
                     else:
                         # Bierze indeks, dataframe i odejmuje wyciągniętą wartość dla danego roku, jeżeli rok jest inny
@@ -1028,7 +705,7 @@ class FinancialXMLRulesCheck:
                         if 'year' in list_elem['value']:
                             picked_year = list_elem['value']['year']
                         value_idx = list_elem['value']['index']
-                        value_src = list_elem['value']['source']
+                        value_src = self.pds[list_elem['value']['source']]['pd']
                         if value_src is None:
                             # The statement this rule compares with is not in the file
                             year_sum.append(None)
@@ -1040,16 +717,13 @@ class FinancialXMLRulesCheck:
                             year_sum.append(None)
                             continue
                         sum_val = checked_value - ref_val
-                        # sum_val = picked_pd.loc[index][p_pd_columns[year]] - value_src.loc[value_idx][value_src_cols[picked_year]]
                 elif 'diff_range' in list_elem:
                     # Podobnie jak w range, tylko tutaj jest ciąg liczb odejmowanych od siebie
                     index_range = list_elem['diff_range']
                     range_list = self.create_full_range_list(index_range)
-                    # sum_val = picked_pd.loc[range_list[0]][p_pd_columns[year]]
                     sum_val = self.get_pd_val(picked_pd, range_list[0], year, p_pd_columns)
                     for dec_val_ind in range_list[1:]:
                         sum_val -= self.get_pd_val(picked_pd, dec_val_ind, year, p_pd_columns)
-                        # sum_val -= picked_pd.loc[dec_val_ind][p_pd_columns[year]]
                     sum_val = checked_value - sum_val
                 elif 'special' in list_elem:
                     # Wyciąga indeksy i znaki operacji z ciągu znaków, który zawiera zapisane tekstem operacje, których
@@ -1068,16 +742,13 @@ class FinancialXMLRulesCheck:
                             continue
                         pd_ind += char
                     indexes.append(pd_ind)
-                    # year_col = p_pd_columns[year]
                     first_index = indexes[0]
                     sum_val = self.get_pd_val(picked_pd, first_index, year,
-                                              p_pd_columns)  # picked_pd.loc[first_index][year_col]
+                                              p_pd_columns)
                     for i in range(len(operators)):
                         if operators[i] == '+':
-                            # sum_val += picked_pd.loc[indexes[i + 1]][year_col]
                             sum_val += self.get_pd_val(picked_pd, indexes[i + 1], year, p_pd_columns)
                         elif operators[i] == '-':
-                            # sum_val -= picked_pd.loc[indexes[i + 1]][year_col]
                             sum_val -= self.get_pd_val(picked_pd, indexes[i + 1], year, p_pd_columns)
                     sum_val = checked_value - sum_val
                 elif 'operations' in list_elem:
@@ -1165,20 +836,15 @@ class FinancialXMLRulesCheck:
                     # Set the row height
                     worksheet.set_row(i, height)
 
-                    # worksheet.write_number(i, 2, row[cols[2]], number_format)
-                    # col_max_size = check_cols_max_size(col_max_size, [row[cols[0]], row[cols[1]], row[cols[2]]])
                     col_list = [it[0] for it in row[cols].items()]
                     col_max_size = check_cols_max_size(col_max_size, col_list)
 
                     if index in self.rules[rule_key]:
                         sum_res = self.rule_check(index, rule_key)
                         for idx, s_val in enumerate(sum_res):
-                            # worksheet.write_number(i, 2 * idx + 3, s_check[0], number_format)
-                            # worksheet.write_number(i, 2 * idx + 4, s_check[1], number_format)
                             for s_id, s_check in enumerate(s_val):
                                 if s_check is not None:
                                     worksheet.write_boolean(i, 2 * idx + len(cols) + s_id, s_check)
-                            # worksheet.write_boolean(i, 2 * idx + 4, s_check[1])
                 i += 1
                 j += 1
 
@@ -1189,22 +855,3 @@ class FinancialXMLRulesCheck:
 
         workbook.close()
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Program do kowersji xmlów z KRSu na pliki excel")
-    parser.add_argument(
-        "-f", "--file", type=str, help='Ścieżka do pliku xml'
-    )
-    args = parser.parse_args()
-    path = "./01_Coca-Cola_FS_2021_v6_30.06.2022.xml"
-    path = "./P300_2020_20220214.xml"
-    path = "./PEPSI-COLA GENERAL BOTTLERS POLAND Sp z oo SprFinJednostkaInnaWTysiacach 2022.07.28.xml"
-    path = args.file
-
-    if path is not None:
-        fxml = FinancialXMLParser(path)
-        # f_xml.generate_excel('Aktywa.xlsx')
-        fxml.generate_assets_excel('Aktywa.xlsx')
-        fxml.generate_passives_excel('Pasywa.xlsx')
-        # passives = f_xml.get_equity_plus_liabilities()
-    logging.debug(fxml.financial_balance_dict)

@@ -216,7 +216,6 @@ name = "pol-tax"
 version = "0.0.4.6"
 source = { virtual = "." }
 dependencies = [
-    { name = "numpy" },
     { name = "pandas" },
     { name = "pyside6" },
     { name = "xlsxwriter" },
@@ -230,7 +229,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pyside6", specifier = ">=6.7" },
     { name = "xlsxwriter", specifier = ">=3.2" },

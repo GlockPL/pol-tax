@@ -1,5 +1,5 @@
 import re
-import numpy as np
+from pathlib import Path
 from Other.Version import Version
 
 
@@ -87,6 +87,12 @@ if __name__ == "__main__":
 
     with open(verinfo_file, 'w') as f:
         f.write(verfile_content)
+
+    # Keep pyproject.toml in sync with resources/version.txt
+    pyproject = Path('pyproject.toml')
+    pyproject_content = re.sub(r'^version = "[^"]*"', f'version = "{vers}"', pyproject.read_text(encoding='utf8'),
+                               count=1, flags=re.M)
+    pyproject.write_text(pyproject_content, encoding='utf8')
 
 
 

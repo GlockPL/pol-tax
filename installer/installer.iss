@@ -2,7 +2,11 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Pol-Tax"
-#define MyAppVersion "0.0.3.3"
+; Version comes from resources\version.txt, bumped by build.py
+#define VersionFile FileOpen(AddBackslash(SourcePath) + "..\resources\version.txt")
+#define MyAppVersion Trim(FileRead(VersionFile))
+#expr FileClose(VersionFile)
+#undef VersionFile
 #define MyAppExeName "pol-tax.exe"
 #define MyAppIcon "pol_tax_icon.ico"
 
@@ -21,7 +25,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=pol_tax_icon.ico
-OutputBaseFilename=PolTax_0.0.3.3
+OutputBaseFilename=PolTax_{#MyAppVersion}
 Uninstallable=yes
 UninstallDisplayIcon={#MyAppIcon}
 
@@ -32,8 +36,8 @@ Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "E:\pol-tax\dist\pol-tax\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "E:\pol-tax\dist\pol-tax\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\pol-tax\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\pol-tax\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

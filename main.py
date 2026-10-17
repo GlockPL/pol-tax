@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import QApplication, QMessageBox, QStyleFactory
-from PySide6.QtGui import QColor, QPalette
 from PySide6.QtCore import QObject, Signal
 
 from Widgets.MainWindow import MainGUI
@@ -49,11 +48,7 @@ def handle_exception(error_info):
     logger.error("Uncaught Exception:",
                   exc_info=(exctype, value, traceback))
     QMessageBox.critical(None, "Błąd",
-                         f"Wystąpił nieoczekiwany błąd:
-
-{value}
-
-"
+                         f"Wystąpił nieoczekiwany błąd:\n\n{value}\n\n"
                          f"Szczegóły zapisano w {settings.get_docs_path() / 'app.log'}")
 
 

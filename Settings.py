@@ -2,6 +2,7 @@ import logging
 
 from PySide6.QtCore import QStandardPaths
 
+import json
 import pickle
 import os
 from pathlib import Path
@@ -12,7 +13,7 @@ class Settings:
     _excel_dir = Path("./Excel")
     _extracted_files_dir = Path("./Extracted")
     # TODO: Paradox of opening setting file that can change it's location after closing
-    _settings_path = Path("./settings.pickle")
+    _settings_path = Path("./settings.json")
     _docs_path = None
     _additional_keywords = {
         "KwotaA": "Kwota na dzień kończący bieżący rok obrotowy",
@@ -45,15 +46,36 @@ class Settings:
         self._settings_path = self._docs_path.joinpath(self._settings_path)
 
         if self._settings_path.exists():
-            with self._settings_path.open(mode='rb') as settings_file:
-                settings_dict = pickle.load(settings_file)
-                self.__dict__.update(settings_dict)
+            self.load(json.loads(self._settings_path.read_text(encoding="utf8")))
+        else:
+            self.migrate_pickle()
         atexit.register(self.cleanup)
         self._excel_dir.mkdir(exist_ok=True, parents=True)
         self._extracted_files_dir.mkdir(exist_ok=True, parents=True)
 
     def __enter__(self):
         return self
+
+    def load(self, settings_dict):
+        if "excel_dir" in settings_dict:
+            self._excel_dir = Path(settings_dict["excel_dir"])
+        if "keywords" in settings_dict:
+            self._additional_keywords = dict(settings_dict["keywords"])
+
+    def migrate_pickle(self):
+        # Versions up to 0.0.4.x kept settings in a pickle of the whole object
+        old_path = self._docs_path / "settings.pickle"
+        if not old_path.exists():
+            return
+        try:
+            with old_path.open(mode='rb') as settings_file:
+                old = pickle.load(settings_file)
+            self.load({"excel_dir": old.get("_excel_dir", self._excel_dir),
+                       "keywords": old.get("_additional_keywords", self._additional_keywords)})
+            self.cleanup()
+            old_path.unlink()
+        except Exception:
+            logging.exception("Could not migrate old settings, using defaults")
 
     @staticmethod
     def find_docs_path():
@@ -104,8 +126,8 @@ class Settings:
         self._excel_dir.mkdir(exist_ok=True, parents=True)
 
     def cleanup(self):
-        with self._settings_path.open(mode='wb') as output_file:
-            pickle.dump(self.__dict__, output_file)
+        settings_dict = {"excel_dir": str(self._excel_dir), "keywords": self._additional_keywords}
+        self._settings_path.write_text(json.dumps(settings_dict, ensure_ascii=False, indent=2), encoding="utf8")
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.cleanup()

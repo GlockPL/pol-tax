@@ -1,0 +1,47 @@
+"""
+Batch conversion of e-financial statements without the GUI:
+
+    uv run python cli.py sprawozdanie1.xml sprawozdanie2.xml -o wyniki --check
+"""
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+from Settings import Settings
+from XML.export import export_statement, export_summation
+
+
+def main(argv=None):
+    arg_parser = argparse.ArgumentParser(description="Konwersja e-sprawozdań finansowych (XML z KRS) na pliki Excel")
+    arg_parser.add_argument("files", nargs="+", type=Path, help="Pliki XML do przetworzenia")
+    arg_parser.add_argument("-o", "--output", type=Path, help="Folder na pliki Excel (domyślnie z ustawień programu)")
+    arg_parser.add_argument("-c", "--check", action="store_true", help="Wykonaj również sprawdzenie sum")
+    arg_parser.add_argument("-v", "--verbose", action="store_true", help="Pokaż szczegółowe logi")
+    args = arg_parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING,
+                        format='%(levelname)s - %(message)s')
+    settings = Settings()
+    excel_dir = args.output or Path(settings.get_excel_dir())
+
+    failed = 0
+    for xml_path in args.files:
+        try:
+            result = export_statement(xml_path, settings, excel_dir)
+            outputs = [path for path, _, _ in result.sections.values()]
+            if args.check:
+                outputs.append(export_summation(result.parser, excel_dir, result.prefix))
+            print(f"{xml_path}:")
+            for output in outputs + result.attachments:
+                print(f"  {output}")
+        except Exception as e:
+            failed += 1
+            logging.debug("Processing failed", exc_info=True)
+            print(f"{xml_path}: BŁĄD - {e}", file=sys.stderr)
+
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
