@@ -1,4 +1,4 @@
-from PySide6.QtCore import QCoreApplication, QResource, QMetaObject, QRect, QSize, Qt, Slot, QThreadPool
+from PySide6.QtCore import QCoreApplication, QMetaObject, QRect, QSize, Qt, Slot, QThreadPool
 from PySide6.QtGui import QAction, QColor,  QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (QApplication, QMessageBox, QToolBar, QFileDialog, QGridLayout, QHeaderView, QLayout,
     QMainWindow, QMenu, QMenuBar, QDialog,
@@ -11,8 +11,7 @@ import os
 import logging
 from pathlib import Path
 
-# Ikony - olać ostrzeżenia pycharma, bez tego nie działa, wystarczy jeden import dla całego programu tutaj
-import resources.icons  # noqa: F401
+import Widgets.icons  # noqa: F401  - registers the icons: search path
 
 from XML.export import ExportResult, export_statement, export_summation
 from Widgets.BackgroundTask import BackgroundTask
@@ -45,12 +44,12 @@ class MainGUI(QMainWindow):
         self.export = None
         self.task = None
         # Icons
-        self.excel_icon = QIcon(QPixmap(":/icons/excel_icon.jpg"))
-        self.spreadsheet_icon = QIcon(QPixmap(":/icons/table_view_icon.png"))
-        self.pdf_icon = QIcon(QPixmap(":/icons/pdf_icon.png"))
-        self.main_icon = QIcon(QPixmap(":/icons/pol_tax_270_icon.png"))
-        self.svg_icon_res_path = ":/icons/summarize_icon.svg"
-        self.svg_open_folder_icon_path = ":/icons/open_folder.svg"
+        self.excel_icon = QIcon(QPixmap("icons:excel_icon.jpg"))
+        self.spreadsheet_icon = QIcon(QPixmap("icons:baseline_table_view_black_48dp.png"))
+        self.pdf_icon = QIcon(QPixmap("icons:baseline_picture_as_pdf_black_48dp.png"))
+        self.main_icon = QIcon(QPixmap("icons:cropped-favicon-1-270x270.png"))
+        self.svg_icon_res_path = "icons:summarize_black_48dp.svg"
+        self.svg_open_folder_icon_path = "icons:folder_open_black_48dp.svg"
         self.svg_doc_icon = self.load_svg_and_color(self.svg_icon_res_path, '#5f6368')
         self.svg_openf_icon = self.load_svg_and_color(self.svg_open_folder_icon_path, '#5f6368')
         # =========================================================
@@ -311,9 +310,7 @@ class MainGUI(QMainWindow):
 
     def load_svg_and_color(self, icon_res_path, color):
         renderer = QSvgRenderer()
-        svg_resource = QResource(icon_res_path)
-        svg_path = svg_resource.absoluteFilePath()
-        renderer.load(svg_path)
+        renderer.load(icon_res_path)
 
         # Create a pixmap from the SVG file
         pixmap = QPixmap(QSize(64, 64))

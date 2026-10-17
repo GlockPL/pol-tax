@@ -44,9 +44,25 @@ uv run pytest
 ## Build a Windows executable
 
 ```console
-package.bat
+uv run python scripts/build.py
 ```
 
-This bumps the build number in `resources/version.txt` (the single source of the version, also synced into
-`pyproject.toml` and `file_version_info.txt`) and creates `dist/pol-tax` with PyInstaller.
-The Inno Setup scripts in `installer/` package it into an installer and read the version from the same file.
+This creates the app in `dist/pol-tax/` with PyInstaller (configured in `pol-tax.spec`) and, if
+[Inno Setup 6](https://jrsoftware.org/isinfo.php) is installed (`winget install JRSoftware.InnoSetup`),
+the installer `dist/Pol-Tax_<version>.exe`. Use `--no-installer` to skip the installer.
+
+The build never changes tracked files. The version lives only in `pyproject.toml`.
+
+## Releasing
+
+1. Bump the version: `uv version --bump patch` (or `minor` / `major`)
+2. Commit, tag and push:
+
+   ```console
+   git commit -am "Release 0.2.0"
+   git tag v0.2.0
+   git push --follow-tags
+   ```
+
+The `Release` GitHub Actions workflow checks that the tag matches `pyproject.toml`, runs the tests, builds the
+installer and attaches it to a GitHub release. The `CI` workflow runs the tests and a build on every push.

@@ -1,12 +1,13 @@
 import json
 import pickle
+import tomllib
 import shutil
 from pathlib import Path
 
 import pytest
 
 import cli
-from Other.Version import Version
+from Other.Version import app_version, windows_version_tuple
 from Settings import Settings
 from XML import FinancialXMLParser as parser_module
 from XML.export import export_statement, export_summation, output_prefix
@@ -89,14 +90,11 @@ def test_old_pickle_settings_are_migrated(tmp_path):
         settings._additional_keywords = dict(Settings._additional_keywords)
 
 
-def test_version_file_round_trip(tmp_path, monkeypatch):
-    version = Version()
-    monkeypatch.setattr(Version, "_version_file", tmp_path / "version.txt")
-    old = list(version.version)
-    try:
-        version.set_version(1, 2, 3, 4)
-        version.up_build()
-        version.save()
-        assert (tmp_path / "version.txt").read_text(encoding="utf8").strip() == "1.2.3.5"
-    finally:
-        version.version = old
+def test_version_comes_from_pyproject():
+    with (Path(__file__).parent.parent / "pyproject.toml").open("rb") as f:
+        assert app_version() == tomllib.load(f)["project"]["version"]
+
+
+def test_windows_version_tuple():
+    assert windows_version_tuple("1.2.3", 45) == (1, 2, 3, 45)
+    assert windows_version_tuple("1.2") == (1, 2, 0, 0)

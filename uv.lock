@@ -213,7 +213,7 @@ wheels = [
 
 [[package]]
 name = "pol-tax"
-version = "0.0.4.6"
+version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "pandas" },

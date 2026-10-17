@@ -3,13 +3,14 @@ from PySide6 import QtWidgets
 from PySide6.QtWidgets import QTableView, QHeaderView, QLabel
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QPixmap
 from Settings import Settings
+import Widgets.icons  # noqa: F401  - registers the icons: search path
 
 
 class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Ustawienia")
-        self.setWindowIcon(QIcon(QPixmap(":/icons/settings_icon.png")))
+        self.setWindowIcon(QIcon(QPixmap("icons:baseline_settings_black_48dp.png")))
         self.settings = Settings()
         self.setMinimumWidth(390)
         self.setMinimumHeight(455)

@@ -2,21 +2,22 @@ from PySide6 import QtWidgets, QtCore
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QHBoxLayout
 
-from Other.Version import Version
+from Other.Version import app_version
+import Widgets.icons  # noqa: F401  - registers the icons: search path
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        version = Version()
+        version = app_version()
 
         self.setWindowTitle("O programie")
-        self.setWindowIcon(QIcon(QPixmap(":/icons/pol_tax_135_icon.png")))
+        self.setWindowIcon(QIcon(QPixmap("icons:cropped-favicon-1-135x135.png")))
         self.resize(390, 220)
 
         horizontalLayout = QHBoxLayout()
 
         image_label = QtWidgets.QLabel()
-        pixmap = QPixmap(":/icons/pol_tax_540_icon.jpg")
+        pixmap = QPixmap("icons:cropped-favicon-1-540x540.jpg")
         pixmap = pixmap.scaled(135, 135, QtCore.Qt.KeepAspectRatio)
         image_label.setPixmap(pixmap)
         image_label.setAlignment(QtCore.Qt.AlignCenter)
