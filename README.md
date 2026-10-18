@@ -24,6 +24,18 @@ uv sync
 uv run python main.py
 ```
 
+## Using the app
+
+- Open a statement with **Otwórz XML** (Ctrl+O), by dragging the file onto the window, from **Ostatnio otwierane**,
+  or with *Open with → Pol-Tax* in Explorer.
+- Statements can be downloaded from the
+  [Repozytorium Dokumentów Finansowych](https://ekrs.ms.gov.pl/rdf/pd/search_df) (search by KRS number).
+- The consistency check runs automatically after opening. Failed checks are listed under the table with the
+  actual and expected value, the difference and the rule; click one to jump to the position. Checked rows are
+  green or red, hover a row to see its checks. **Raport w Excelu** opens the full report with a
+  *Niezgodności* sheet.
+- **Otwórz w Excelu** (Ctrl+E) opens the displayed part of the statement in Excel.
+
 ## Command line
 
 Convert many statements at once without the GUI (`--check` adds the consistency check workbook):

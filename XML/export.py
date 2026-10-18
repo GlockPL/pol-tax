@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from Settings import Settings
-from XML.FinancialXMLParser import FinancialXMLParser, FinancialXMLRulesCheck
+from XML.FinancialXMLParser import CheckResult, FinancialXMLParser, FinancialXMLRulesCheck
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,7 @@ SECTIONS = [
 @dataclass
 class ExportResult:
     parser: FinancialXMLParser
+    xml_path: Path
     prefix: str
     # Section key -> (excel path, dataframe, border list); sections missing from the file are left out
     sections: dict = field(default_factory=dict)
@@ -55,7 +56,7 @@ def export_statement(xml_path: Path, settings: Settings, excel_dir: Path = None)
     excel_dir.mkdir(parents=True, exist_ok=True)
 
     parser = FinancialXMLParser(str(xml_path), settings)
-    result = ExportResult(parser=parser, prefix=output_prefix(xml_path))
+    result = ExportResult(parser=parser, xml_path=xml_path, prefix=output_prefix(xml_path))
 
     for section in SECTIONS:
         dataframe = getattr(parser, section.pd_attr)
@@ -69,9 +70,24 @@ def export_statement(xml_path: Path, settings: Settings, excel_dir: Path = None)
     return result
 
 
-def export_summation(parser: FinancialXMLParser, excel_dir: Path, prefix: str) -> Path:
+@dataclass
+class SummationResult:
+    path: Path
+    results: list[CheckResult]
+
+    @property
+    def failures(self):
+        return [result for result in self.results if not result.ok]
+
+
+def export_summation(parser: FinancialXMLParser, excel_dir: Path, prefix: str) -> SummationResult:
+    """
+    Runs the consistency check and writes it to Excel (all positions plus a sheet with the failed checks)
+    """
     excel_dir = Path(excel_dir)
     excel_dir.mkdir(parents=True, exist_ok=True)
     summation_path = excel_dir / f"{prefix}_summation.xlsx"
-    FinancialXMLRulesCheck(parser).to_excel(str(summation_path))
-    return summation_path
+    rules_check = FinancialXMLRulesCheck(parser)
+    results = rules_check.check_all()
+    rules_check.to_excel(str(summation_path), results)
+    return SummationResult(path=summation_path, results=results)

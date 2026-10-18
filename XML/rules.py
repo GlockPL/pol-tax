@@ -12,6 +12,19 @@ says how the checked value should be computed:
 The P&L rules are written for the comparative variant (RZiSPor).
 """
 
+SECTION_TITLES = {
+    'introduction': 'Wprowadzenie',
+    'assets': 'Aktywa',
+    'passives': 'Pasywa',
+    'gain_and_loses': 'Rachunek zysków i strat',
+    'change_in_capital': 'Zestawienie zmian w kapitale własnym',
+    'capital_flow': 'Rachunek przepływów pieniężnych',
+    'additional_info': 'Informacja dodatkowa (podatek dochodowy)',
+    'constants': 'Stałe',
+}
+
+YEAR_NAMES = {1: 'rok bieżący', 2: 'rok poprzedni'}
+
 RULES = {'assets': {'': [{'value': {'index': '', 'source': 'passives'}, 'years': [1, 2]},
                               {'range': 'A-D', 'years': [1, 2]}],
                          'A': [{'range': 'A.I-V', 'years': [1, 2]}],
@@ -134,9 +147,7 @@ RULES = {'assets': {'': [{'value': {'index': '', 'source': 'passives'}, 'years':
                                              {'operator': '-'},
                                              {'source': 'passives', 'index': 'B.III', 'year': 2},
                                              {'source': 'passives', 'index': 'B.III.3.A', 'year': 2},
-                                             {'operator': '-'}, {'operator': '-'},
-                                             {'source': 'constants', 'index': '-1', 'year': 1},
-                                             {'operator': '*'}], 'years': [1]}],
+                                             {'operator': '-'}, {'operator': '-'}], 'years': [1]}],
                   'A.II.9': [{'operations': [{'source': 'passives', 'index': 'B.IV', 'year': 1},
                                              {'source': 'passives', 'index': 'B.IV', 'year': 2},
                                              {'operator': '-'},

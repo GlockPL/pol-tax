@@ -1,7 +1,13 @@
-from PySide6.QtWidgets import QStyledItemDelegate
-from PySide6.QtGui import QColor, QPen, QTextOption
+from decimal import Decimal
+
 from PySide6.QtCore import Qt
-from decimal import Decimal, InvalidOperation
+from PySide6.QtGui import QColor, QPen
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate
+
+from Model.PandasModel import format_amount
+
+# Neutral, so green only ever means "check passed"
+NAME_COLUMN_COLOR = QColor("#f3f4f6")
 
 
 class ColorDelegate(QStyledItemDelegate):
@@ -9,40 +15,48 @@ class ColorDelegate(QStyledItemDelegate):
         self.color_list = color_list
         super(ColorDelegate, self).__init__(parent)
 
-    def displayText(self, value, locale):
-        try:
-            dec = Decimal(value)
-            # return locale.format('%.2f', Decimal(value), grouping=True)
-            return format(dec, ',').replace(',', ' ').replace('.', ',')
-        except InvalidOperation:
-            return value
-
     def paint(self, painter, option, index):
         painter.save()
         row = index.row()
         column = index.column()
 
-        # Set the background color for the first column
-        if column == 0:
-            painter.fillRect(option.rect, QColor("#d7e4bc"))
+        check_color = index.data(Qt.BackgroundRole)
+        selected = option.state & QStyle.State_Selected
+        if selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+        elif check_color is not None:
+            painter.fillRect(option.rect, check_color)
+        elif column == 0:
+            painter.fillRect(option.rect, NAME_COLUMN_COLOR)
         else:
             painter.fillRect(option.rect, option.palette.base())
 
-        # Draw the border around the row
-        if self.color_list[row] == 1:
+        # Draw the border under header rows
+        if row < len(self.color_list) and self.color_list[row] == 1:
             pen = QPen()
             pen.setColor(Qt.black)
             pen.setWidth(1)
             painter.setPen(pen)
             painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
 
-        # Draw the text in the cell
-        display_text = self.displayText(index.data(Qt.DisplayRole), option.locale)
-        text_rect = option.rect.translated(0, (option.rect.height() - option.fontMetrics.height()) / 2)
-        text_rect.setLeft(text_rect.left() + 4)
-        text_option = QTextOption(Qt.AlignLeft | Qt.AlignVCenter)
-        text_option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
-        # painter.drawText(text_rect, text_option, display_text)
-        painter.drawText(text_rect, display_text, text_option)
+        value = index.data(Qt.UserRole)
+        if isinstance(value, Decimal):
+            text = format_amount(value)
+            alignment = Qt.AlignRight | Qt.AlignVCenter
+        else:
+            text = index.data(Qt.DisplayRole) or ""
+            alignment = Qt.AlignLeft | Qt.AlignVCenter
+
+        if selected:
+            painter.setPen(option.palette.highlightedText().color())
+        elif check_color is not None or column == 0:
+            # Fixed light backgrounds need dark text, also in dark mode
+            painter.setPen(Qt.black)
+        else:
+            painter.setPen(option.palette.text().color())
+        text_rect = option.rect.adjusted(4, 0, -6, 0)
+        # One line per row, long names are elided (the full name is in the tooltip)
+        text = option.fontMetrics.elidedText(text, Qt.ElideRight, text_rect.width())
+        painter.drawText(text_rect, alignment, text)
 
         painter.restore()

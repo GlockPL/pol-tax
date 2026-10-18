@@ -15,7 +15,8 @@ from decimal import Decimal, InvalidOperation
 
 # My files Import
 from XML.xsd_downloader import download_schema, schema_cache_dir
-from XML.rules import RULES
+from XML.rules import RULES, SECTION_TITLES, YEAR_NAMES
+from dataclasses import dataclass
 from Settings import Settings
 
 roman2arabic = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10, 'XI': 11,
@@ -396,6 +397,19 @@ class FinancialXMLParser:
 
         return out_dict
 
+    def company_info(self):
+        """
+        Basic facts about the company from the introduction, empty strings when not present
+        """
+        fields = self.flatten_dict(self.introduction_dict)
+
+        def field(name):
+            value = fields.get(name, "")
+            return "" if value == "Header" else value
+
+        return {"name": field("NazwaFirmy"), "city": field("Miejscowosc"), "nip": field("P_1D"),
+                "krs": field("P_1E"), "date_from": field("DataOd"), "date_to": field("DataDo")}
+
     def generate_introduction_pd(self):
         rows = []
         border_this_list = []
@@ -542,6 +556,94 @@ def decimal_to_bool(dec_val):
     return dec_val == 0.0
 
 
+@dataclass
+class CheckResult:
+    section: str
+    index: str
+    label: str
+    year: int
+    actual: Decimal
+    expected: Decimal
+    description: str
+
+    @property
+    def difference(self):
+        return self.actual - self.expected
+
+    @property
+    def ok(self):
+        return self.difference == 0
+
+
+def split_special(expression):
+    """
+    'C+D-E' -> (['C', 'D', 'E'], ['+', '-'])
+    """
+    indexes, operators, current = [], [], ''
+    for char in expression:
+        if char in '+-':
+            indexes.append(current)
+            operators.append(char)
+            current = ''
+        else:
+            current += char
+    indexes.append(current)
+    return indexes, operators
+
+
+def position_name(index):
+    return index if index else "razem"
+
+
+def describe_operand(source, index, year):
+    if source == 'constants':
+        return index
+    return f"{SECTION_TITLES[source]} {position_name(index)} ({YEAR_NAMES[year]})"
+
+
+def describe_rule(rule, index, year):
+    """
+    Human readable description of what the checked position should be equal to
+    """
+    def range_ends(range_str):
+        elements = range_str.split('.')
+        prefix = '.'.join(elements[:-1])
+        first, last = elements[-1].split('-')
+        return (f"{prefix}.{first}" if prefix else first), (f"{prefix}.{last}" if prefix else last)
+
+    if 'range' in rule:
+        first, last = range_ends(rule['range'])
+        return f"suma pozycji {first} do {last}"
+    if 'diff_range' in rule:
+        first, last = range_ends(rule['diff_range'])
+        return f"{first} pomniejszone o kolejne pozycje do {last}"
+    if 'special' in rule:
+        indexes, operators = split_special(rule['special'])
+        text = indexes[0]
+        for operator, operand in zip(operators, indexes[1:]):
+            text += f" {'+' if operator == '+' else '−'} {operand}"
+        return text
+    if 'value' in rule:
+        value = rule['value']
+        if 'data' in value:
+            return f"wartość {value['data']}"
+        return describe_operand(value['source'], value['index'], value.get('year', year))
+    if 'operations' in rule:
+        stack = []
+        for elem in rule['operations']:
+            if 'index' in elem:
+                stack.append(describe_operand(elem['source'], elem['index'], elem['year']))
+            else:
+                right, left = stack.pop(), stack.pop()
+                operator = {'+': '+', '-': '−', '*': '×'}[elem['operator']]
+                stack.append(f"({left} {operator} {right})")
+        text = stack.pop()
+        # The outermost operation is always fully wrapped in parentheses
+        has_operator = any('operator' in elem for elem in rule['operations'])
+        return text[1:-1] if has_operator else text
+    return ""
+
+
 class FinancialXMLRulesCheck:
     def __init__(self, f_xml: FinancialXMLParser):
         logging.debug(f"Beggining rulse check for {f_xml.xml_path}")
@@ -672,7 +774,11 @@ class FinancialXMLRulesCheck:
 
         return val
 
-    def rule_check(self, index, subset_key):
+    def evaluate_rule(self, index, subset_key):
+        """
+        For every rule of the position and every checked year returns (actual, expected) or None when the
+        rule can't be checked because data it refers to is missing from the file
+        """
         rule = self.rules[subset_key][index]
         res_list = []
 
@@ -689,15 +795,14 @@ class FinancialXMLRulesCheck:
                 if 'range' in list_elem:
                     index_range = list_elem['range']
                     range_list = self.create_full_range_list(index_range)
-                    sum_val = Decimal(0.0)
+                    expected = Decimal(0)
                     for dec_val_ind in range_list:
-                        sum_val += self.get_pd_val(picked_pd, dec_val_ind, year, p_pd_columns)
-                    sum_val = checked_value - sum_val
+                        expected += self.get_pd_val(picked_pd, dec_val_ind, year, p_pd_columns)
                 elif 'value' in list_elem:
                     # Jeżeli pod indeksem value jest indeks data bierzę się gołą wartość i odejmuje od aktualnie
                     # sprawdzanej wartości, najgorsza możliwość bo nie jak przypilnować indeksu
                     if 'data' in list_elem['value']:
-                        sum_val = checked_value - list_elem['value']['data']
+                        expected = list_elem['value']['data']
                     else:
                         # Bierze indeks, dataframe i odejmuje wyciągniętą wartość dla danego roku, jeżeli rok jest inny
                         # niż ten, który jest w indeksie szukania dla sprawdzanej wartości
@@ -716,52 +821,70 @@ class FinancialXMLRulesCheck:
                         if missing:
                             year_sum.append(None)
                             continue
-                        sum_val = checked_value - ref_val
+                        expected = ref_val
                 elif 'diff_range' in list_elem:
                     # Podobnie jak w range, tylko tutaj jest ciąg liczb odejmowanych od siebie
                     index_range = list_elem['diff_range']
                     range_list = self.create_full_range_list(index_range)
-                    sum_val = self.get_pd_val(picked_pd, range_list[0], year, p_pd_columns)
+                    expected = self.get_pd_val(picked_pd, range_list[0], year, p_pd_columns)
                     for dec_val_ind in range_list[1:]:
-                        sum_val -= self.get_pd_val(picked_pd, dec_val_ind, year, p_pd_columns)
-                    sum_val = checked_value - sum_val
+                        expected -= self.get_pd_val(picked_pd, dec_val_ind, year, p_pd_columns)
                 elif 'special' in list_elem:
                     # Wyciąga indeksy i znaki operacji z ciągu znaków, który zawiera zapisane tekstem operacje, których
                     # nie da się zapisać w prosty sposób na przykłąd zakresem, bo wartości są losowe np. A.II+B.I.3
-                    signs = '+-'
-                    operations = list_elem['special']
-
-                    pd_ind = ''
-                    indexes = []
-                    operators = []
-                    for char in operations:
-                        if char in signs:
-                            indexes.append(pd_ind)
-                            pd_ind = ''
-                            operators.append(char)
-                            continue
-                        pd_ind += char
-                    indexes.append(pd_ind)
-                    first_index = indexes[0]
-                    sum_val = self.get_pd_val(picked_pd, first_index, year,
-                                              p_pd_columns)
+                    indexes, operators = split_special(list_elem['special'])
+                    expected = self.get_pd_val(picked_pd, indexes[0], year, p_pd_columns)
                     for i in range(len(operators)):
                         if operators[i] == '+':
-                            sum_val += self.get_pd_val(picked_pd, indexes[i + 1], year, p_pd_columns)
+                            expected += self.get_pd_val(picked_pd, indexes[i + 1], year, p_pd_columns)
                         elif operators[i] == '-':
-                            sum_val -= self.get_pd_val(picked_pd, indexes[i + 1], year, p_pd_columns)
-                    sum_val = checked_value - sum_val
+                            expected -= self.get_pd_val(picked_pd, indexes[i + 1], year, p_pd_columns)
                 elif 'operations' in list_elem:
                     rpn = self.reverse_polish_notation(list_elem['operations'])
                     if rpn is None:
                         year_sum.append(None)
                         continue
-                    sum_val = checked_value - rpn
-                year_sum.append(decimal_to_bool(sum_val))
+                    expected = rpn
+                year_sum.append((checked_value, expected))
 
             res_list.append(year_sum)
 
         return res_list
+
+    def rule_check(self, index, subset_key):
+        return [[None if pair is None else decimal_to_bool(pair[0] - pair[1]) for pair in year_pairs]
+                for year_pairs in self.evaluate_rule(index, subset_key)]
+
+    def checked_rows(self):
+        """
+        Yields (section key, index, row) of every position that has rules, the same rows the summation sheet checks
+        """
+        for rule_key in self.rules.keys():
+            df = self.pds[rule_key]['pd']
+            if df is None:
+                continue
+            cols = df.columns
+            for index, row in df.iterrows():
+                if is_missing(row[cols[1]]) or index not in self.rules[rule_key]:
+                    continue
+                yield rule_key, index, row
+
+    def check_all(self):
+        """
+        Returns a CheckResult for every rule, position and year that could be checked
+        """
+        results = []
+        for rule_key, index, row in self.checked_rows():
+            label = row[row.index[0]]
+            for rule, year_pairs in zip(self.rules[rule_key][index], self.evaluate_rule(index, rule_key)):
+                for year, pair in zip(rule['years'], year_pairs):
+                    if pair is None:
+                        continue
+                    actual, expected = pair
+                    results.append(CheckResult(section=rule_key, index=index, label=label, year=year,
+                                               actual=Decimal(actual), expected=Decimal(expected),
+                                               description=describe_rule(rule, index, year)))
+        return results
 
     def height_check(self, text, worksheet, index):
         char_line_limit = 75
@@ -775,10 +898,12 @@ class FinancialXMLRulesCheck:
         worksheet.set_row(index, height)
         return worksheet
 
-    def to_excel(self, out_file):
+    def to_excel(self, out_file, results=None):
+        if results is None:
+            results = self.check_all()
         workbook = xlsxwriter.Workbook(out_file)
         workbook.formats[0].set_font_size(10)
-        worksheet = workbook.add_worksheet()
+        worksheet = workbook.add_worksheet("Sumowanie")
         workbook, header_cell_format, normal_cell_format, number_format = excel_style_format(workbook)
         # Sets first columns width
         worksheet.set_column(0, 0, 100)
@@ -853,5 +978,26 @@ class FinancialXMLRulesCheck:
                 col_siz = col_siz // 2
             worksheet.set_column(idx, idx, col_siz)
 
+        self.write_failures_sheet(workbook, header_cell_format, normal_cell_format, number_format, results)
         workbook.close()
+
+    def write_failures_sheet(self, workbook, header_cell_format, normal_cell_format, number_format, results):
+        worksheet = workbook.add_worksheet("Niezgodności")
+        headers = ["Sekcja", "Pozycja", "Nazwa", "Rok", "Wartość", "Oczekiwana", "Różnica", "Reguła"]
+        widths = [28, 10, 60, 14, 18, 18, 18, 70]
+        for col, (header, width) in enumerate(zip(headers, widths)):
+            worksheet.write(0, col, header, header_cell_format)
+            worksheet.set_column(col, col, width)
+        failures = [result for result in results if not result.ok]
+        if len(failures) == 0:
+            worksheet.write(1, 0, "Wszystkie reguły są spełnione", normal_cell_format)
+        for row, result in enumerate(failures, start=1):
+            worksheet.write(row, 0, SECTION_TITLES[result.section], normal_cell_format)
+            worksheet.write(row, 1, result.index or "razem", normal_cell_format)
+            worksheet.write(row, 2, result.label, normal_cell_format)
+            worksheet.write(row, 3, YEAR_NAMES[result.year], normal_cell_format)
+            worksheet.write_number(row, 4, result.actual, number_format)
+            worksheet.write_number(row, 5, result.expected, number_format)
+            worksheet.write_number(row, 6, result.difference, number_format)
+            worksheet.write(row, 7, result.description, normal_cell_format)
 

@@ -69,5 +69,9 @@ if __name__ == "__main__":
     window = MainGUI(app, settings)
     window.show()
 
+    # "Open with" from Explorer passes the file as the first argument
+    if len(sys.argv) > 1:
+        window.open_file(sys.argv[1])
+
     sys.exit(app.exec())
 

@@ -30,9 +30,12 @@ def main(argv=None):
         try:
             result = export_statement(xml_path, settings, excel_dir)
             outputs = [path for path, _, _ in result.sections.values()]
+            summary = ""
             if args.check:
-                outputs.append(export_summation(result.parser, excel_dir, result.prefix))
-            print(f"{xml_path}:")
+                summation = export_summation(result.parser, excel_dir, result.prefix)
+                outputs.append(summation.path)
+                summary = f" (sprawdzono {len(summation.results)} reguł, niezgodności: {len(summation.failures)})"
+            print(f"{xml_path}:{summary}")
             for output in outputs + result.attachments:
                 print(f"  {output}")
         except Exception as e:

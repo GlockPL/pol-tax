@@ -40,7 +40,8 @@ def test_export_statement_writes_present_sections_only(xml_path, tmp_path):
     assert [p.name for p in result.attachments] == ["zalacznik.pdf"]
 
     summation = export_summation(result.parser, out_dir, result.prefix)
-    assert summation.exists()
+    assert summation.path.exists()
+    assert len(summation.results) > 0
 
 
 def test_output_prefix_differs_for_same_name_in_other_folder(tmp_path):

@@ -15,6 +15,8 @@ class Settings:
     # TODO: Paradox of opening setting file that can change it's location after closing
     _settings_path = Path("./settings.json")
     _docs_path = None
+    _recent_files = []
+    MAX_RECENT_FILES = 8
     _additional_keywords = {
         "KwotaA": "Kwota na dzień kończący bieżący rok obrotowy",
         "KwotaB": "Kwota na dzień kończący poprzedni rok obrotowy",
@@ -61,6 +63,8 @@ class Settings:
             self._excel_dir = Path(settings_dict["excel_dir"])
         if "keywords" in settings_dict:
             self._additional_keywords = dict(settings_dict["keywords"])
+        if "recent_files" in settings_dict:
+            self._recent_files = list(settings_dict["recent_files"])
 
     def migrate_pickle(self):
         # Versions up to 0.0.4.x kept settings in a pickle of the whole object
@@ -118,6 +122,15 @@ class Settings:
     def get_docs_path(self):
         return self._docs_path
 
+    def get_recent_files(self):
+        # Files deleted or moved since are left out
+        return [path for path in self._recent_files if Path(path).exists()]
+
+    def add_recent_file(self, path):
+        path = str(Path(path).resolve())
+        self._recent_files = [path] + [p for p in self._recent_files if p != path]
+        self._recent_files = self._recent_files[:self.MAX_RECENT_FILES]
+
     def set_keywords(self, d):
         self._additional_keywords = d
 
@@ -126,7 +139,8 @@ class Settings:
         self._excel_dir.mkdir(exist_ok=True, parents=True)
 
     def cleanup(self):
-        settings_dict = {"excel_dir": str(self._excel_dir), "keywords": self._additional_keywords}
+        settings_dict = {"excel_dir": str(self._excel_dir), "keywords": self._additional_keywords,
+                         "recent_files": self._recent_files}
         self._settings_path.write_text(json.dumps(settings_dict, ensure_ascii=False, indent=2), encoding="utf8")
 
     def __exit__(self, exc_type, exc_value, traceback):
