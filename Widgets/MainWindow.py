@@ -2,12 +2,13 @@ import logging
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QThreadPool, QUrl
+from PySide6.QtCore import QSize, QStandardPaths, Qt, QThreadPool, QUrl
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QDialog, QFileDialog, QFrame,
-                               QHBoxLayout, QHeaderView, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMenu,
-                               QMessageBox, QProgressBar, QPushButton, QSplitter, QStackedWidget, QTableView,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
+                               QMenu,
+                               QMessageBox, QProgressBar, QPushButton, QSplitter, QStackedWidget,
                                QTableWidget, QTableWidgetItem, QToolBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
                                QWidget)
 
@@ -17,7 +18,11 @@ from Widgets.AboutDialog import AboutDialog
 from Widgets.BackgroundTask import BackgroundTask
 from Widgets.ColorDelegate import ColorDelegate
 from Widgets.SettingsDialog import SettingsDialog
-from XML.export import SECTIONS, ExportResult, SummationResult, export_statement, export_summation
+from Widgets.StatementTable import StatementTable
+from XML.export import (SECTIONS, ExportResult, SummationResult, default_workbook_name, export_statement,
+                        export_summation, export_workbook)
+from XML.presentation import (CHANGE_COLUMN, CHANGE_PERCENT_COLUMN, YEAR_SECTIONS, short_year_headers,
+                              with_year_change)
 from XML.rules import SECTION_TITLES, YEAR_NAMES
 
 RDF_URL = "https://ekrs.ms.gov.pl/rdf/pd/search_df"
@@ -59,6 +64,9 @@ class MainGUI(QMainWindow):
         self.current_section = None
         self.current_model = None
         self.section_items = {}
+        # Folded positions per section, kept while switching between sections
+        self.collapsed_by_section = {}
+        self.last_export_dir = None
 
         self.excel_icon = QIcon(QPixmap("icons:excel_icon.jpg"))
         self.spreadsheet_icon = QIcon(QPixmap("icons:baseline_table_view_black_48dp.png"))
@@ -104,6 +112,12 @@ class MainGUI(QMainWindow):
         self.actionOpenExcel.setToolTip("Otwórz wyświetlaną część sprawozdania w Excelu (Ctrl+E)")
         self.actionOpenExcel.triggered.connect(self.open_current_excel)
 
+        self.actionExport = QAction(self.style().standardIcon(self.style().StandardPixmap.SP_DialogSaveButton),
+                                    "Eksportuj do Excela…", self)
+        self.actionExport.setShortcut(QKeySequence.Save)
+        self.actionExport.setToolTip("Zapisz całe sprawozdanie i wynik kontroli w jednym pliku Excel (Ctrl+S)")
+        self.actionExport.triggered.connect(self.export_to_excel)
+
         self.actionFolder = QAction(self.folder_icon, "Folder z plikami", self)
         self.actionFolder.setToolTip("Otwórz folder z wygenerowanymi plikami Excel")
         self.actionFolder.triggered.connect(self.open_excel_folder)
@@ -128,6 +142,7 @@ class MainGUI(QMainWindow):
         self.recent_menu = file_menu.addMenu("Ostatnio otwierane")
         self.recent_menu.aboutToShow.connect(self.fill_recent_menu)
         file_menu.addSeparator()
+        file_menu.addAction(self.actionExport)
         file_menu.addAction(self.actionOpenExcel)
         file_menu.addAction(self.actionFolder)
         file_menu.addSeparator()
@@ -152,6 +167,7 @@ class MainGUI(QMainWindow):
         toolbar.addAction(self.actionOpenXML)
         toolbar.addSeparator()
         toolbar.addAction(self.actionCheck)
+        toolbar.addAction(self.actionExport)
         toolbar.addAction(self.actionOpenExcel)
         toolbar.addAction(self.actionFolder)
         self.addToolBar(Qt.TopToolBarArea, toolbar)
@@ -253,13 +269,39 @@ class MainGUI(QMainWindow):
         # Right: the table and below it the check results
         self.section_title = QLabel()
         self.section_title.setStyleSheet("font-size: 15px; font-weight: 600;")
-        self.tableView = QTableView()
-        self.tableView.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Szukaj pozycji (Ctrl+F)…")
+        self.search.setClearButtonEnabled(True)
+        self.search.setMaximumWidth(280)
+        self.search.textChanged.connect(self.apply_row_visibility)
+        search_action = QAction(self)
+        search_action.setShortcut(QKeySequence.Find)
+        search_action.triggered.connect(lambda: (self.search.setFocus(), self.search.selectAll()))
+        self.addAction(search_action)
+        self.expand_button = QPushButton("Rozwiń wszystko")
+        self.expand_button.clicked.connect(self.expand_all)
+        self.collapse_button = QPushButton("Zwiń")
+        self.collapse_button.setToolTip("Pokaż tylko główne pozycje")
+        self.collapse_button.clicked.connect(self.collapse_all)
+        self.show_change = QCheckBox("Zmiana r/r")
+        self.show_change.setToolTip("Pokaż zmianę względem poprzedniego roku")
+        self.show_change.setChecked(True)
+        self.show_change.toggled.connect(lambda: self.show_section(self.current_section))
+        table_toolbar = QHBoxLayout()
+        table_toolbar.addWidget(self.section_title)
+        table_toolbar.addStretch()
+        table_toolbar.addWidget(self.show_change)
+        table_toolbar.addWidget(self.expand_button)
+        table_toolbar.addWidget(self.collapse_button)
+        table_toolbar.addWidget(self.search)
+
+        self.tableView = StatementTable()
         self.tableView.verticalHeader().setDefaultSectionSize(26)
+        self.tableView.toggle_requested.connect(self.toggle_row)
         table_box = QWidget()
         table_layout = QVBoxLayout(table_box)
         table_layout.setContentsMargins(0, 0, 0, 0)
-        table_layout.addWidget(self.section_title)
+        table_layout.addLayout(table_toolbar)
         table_layout.addWidget(self.tableView)
 
         self.check_panel = self.create_check_panel()
@@ -417,6 +459,7 @@ class MainGUI(QMainWindow):
         self.actionCheck.setEnabled(loaded and not busy)
         self.actionOpenExcel.setEnabled(loaded and self.current_section in self.export.sections if loaded
                                         else False)
+        self.actionExport.setEnabled(loaded and not busy)
 
     # ------------------------------------------------------------------ showing the document
 
@@ -518,12 +561,17 @@ class MainGUI(QMainWindow):
             return
         self.current_section = section_key
         _, dataframe, border_list = self.export.sections[section_key]
-        if section_key == "introduction":
+        is_introduction = section_key == "introduction"
+        if is_introduction:
             dataframe = dataframe.rename(columns={"Col1": "", "Col2": "", "Col3": ""})
         else:
             dataframe = dataframe.rename(columns=self.short_year_headers())
+        has_years = section_key in YEAR_SECTIONS
+        if has_years and self.show_change.isChecked():
+            dataframe = with_year_change(dataframe)
 
-        self.current_model = PandasModel(dataframe, self.row_checks(section_key))
+        self.current_model = PandasModel(dataframe, self.row_checks(section_key), with_hierarchy=not is_introduction)
+        self.current_model.collapsed = self.collapsed_by_section.setdefault(section_key, set())
         self.tableView.setModel(self.current_model)
         self.tableView.setItemDelegate(ColorDelegate(border_list, self.tableView))
         # Names get the room, amounts a fixed width (their headers are long, the full text is in the tooltip)
@@ -539,24 +587,59 @@ class MainGUI(QMainWindow):
             self.tableView.verticalHeader().setVisible(True)
             header.setSectionResizeMode(0, QHeaderView.Stretch)
             for column in range(1, self.current_model.columnCount()):
-                self.tableView.setColumnWidth(column, 170)
+                name = dataframe.columns[column]
+                width = 110 if name == CHANGE_PERCENT_COLUMN else 150 if name == CHANGE_COLUMN else 170
+                self.tableView.setColumnWidth(column, width)
         self.section_title.setText(SECTION_TITLES[section_key])
+        self.show_change.setVisible(has_years)
+        self.expand_button.setVisible(not is_introduction)
+        self.collapse_button.setVisible(not is_introduction)
+        self.apply_row_visibility()
         self.update_actions()
 
+    def apply_row_visibility(self):
+        """
+        Hides rows inside folded positions, or when searching, rows that don't match
+        """
+        model = self.current_model
+        if model is None:
+            return
+        text = self.search.text().strip().casefold()
+        for row in range(model.rowCount()):
+            if text:
+                name = str(model.index(row, 0).data(Qt.DisplayRole)).casefold()
+                visible = text in name or text in model.key(row).casefold()
+            else:
+                visible = not any(ancestor in model.collapsed for ancestor in model.ancestors(row))
+            self.tableView.setRowHidden(row, not visible)
+
+    def toggle_row(self, row):
+        if self.current_model is None or self.search.text():
+            return
+        self.current_model.toggle(row)
+        self.apply_row_visibility()
+
+    def expand_all(self):
+        if self.current_model is not None:
+            self.current_model.collapsed.clear()
+            self.apply_row_visibility()
+            self.tableView.viewport().update()
+
+    def collapse_all(self):
+        """
+        Leaves the total and the main positions (A, B, ...) visible
+        """
+        model = self.current_model
+        if model is None:
+            return
+        # Every level is folded, unfolding a position then shows just its direct sub-positions
+        model.collapsed.clear()
+        model.collapsed.update(key for key in model.keys_with_children() if key != "")
+        self.apply_row_visibility()
+        self.tableView.viewport().update()
+
     def short_year_headers(self):
-        """
-        'Kwota na dzień kończący bieżący rok obrotowy' -> 'Rok bieżący (2021)'
-        """
-        keywords = self.app_settings.get_keywords()
-        year = self.export.parser.company_info()["date_to"][:4]
-        current = f"Rok bieżący ({year})" if year.isdigit() else "Rok bieżący"
-        previous = f"Rok poprzedni ({int(year) - 1})" if year.isdigit() else "Rok poprzedni"
-        headers = {}
-        if keywords.get("KwotaA"):
-            headers[keywords["KwotaA"]] = current
-        if keywords.get("KwotaB"):
-            headers[keywords["KwotaB"]] = previous
-        return headers
+        return short_year_headers(self.app_settings.get_keywords(), self.export.parser.company_info()["date_to"])
 
     def row_checks(self, section_key):
         if self.summation is None:
@@ -639,10 +722,31 @@ class MainGUI(QMainWindow):
         self.select_section(section_key)
         table_row = self.current_model.row_of_index(index) if self.current_model else None
         if table_row is not None:
+            self.search.clear()
+            self.current_model.collapsed.difference_update(self.current_model.ancestors(table_row))
+            self.apply_row_visibility()
             self.tableView.selectRow(table_row)
             self.tableView.scrollTo(self.current_model.index(table_row, 0), QAbstractItemView.PositionAtCenter)
 
     # ------------------------------------------------------------------ other actions
+
+    def export_to_excel(self):
+        if self.export is None:
+            return
+        start_dir = self.last_export_dir or QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        path, _ = QFileDialog.getSaveFileName(self, "Eksportuj do Excela",
+                                              str(Path(start_dir) / default_workbook_name(self.export)),
+                                              "Skoroszyt Excel (*.xlsx)")
+        if not path:
+            return
+        self.last_export_dir = str(Path(path).parent)
+        self.run_in_background("Zapisywanie pliku Excel…", self.export_done, export_workbook, self.export, Path(path),
+                               self.app_settings.get_keywords(), self.summation)
+
+    def export_done(self, path):
+        answer = QMessageBox.question(self, "Eksport zakończony", f"Zapisano:\n{path}\n\nOtworzyć teraz?")
+        if answer == QMessageBox.Yes:
+            self.open_path(path)
 
     def open_current_excel(self):
         if self.export and self.current_section in self.export.sections:

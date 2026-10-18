@@ -34,7 +34,11 @@ uv run python main.py
   actual and expected value, the difference and the rule; click one to jump to the position. Checked rows are
   green or red, hover a row to see its checks. **Raport w Excelu** opens the full report with a
   *Niezgodności* sheet.
-- **Otwórz w Excelu** (Ctrl+E) opens the displayed part of the statement in Excel.
+- Positions are nested (A > A.I > A.I.1): click the arrow or double-click a row to fold it, or use
+  **Rozwiń wszystko** / **Zwiń**. **Zmiana r/r** adds the year-over-year change, the search box (Ctrl+F)
+  filters positions and Ctrl+C copies the selected cells, ready to paste into Excel.
+- **Eksportuj do Excela** (Ctrl+S) saves the whole statement in one workbook: a sheet per part plus the check
+  results. **Otwórz w Excelu** (Ctrl+E) opens just the displayed part.
 
 ## Command line
 
@@ -43,6 +47,8 @@ Convert many statements at once without the GUI (`--check` adds the consistency 
 ```console
 uv run python cli.py sprawozdanie1.xml sprawozdanie2.xml -o wyniki --check
 ```
+
+`--workbook` additionally saves each statement as one workbook (like **Eksportuj do Excela**).
 
 Settings, the XSD cache, Excel files and extracted attachments live in `Documents\pol-tax`.
 The consistency rules are defined in [`XML/rules.py`](XML/rules.py).

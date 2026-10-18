@@ -1,9 +1,15 @@
 import hashlib
+import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
+
+import xlsxwriter
 
 from Settings import Settings
 from XML.FinancialXMLParser import CheckResult, FinancialXMLParser, FinancialXMLRulesCheck
+from XML.presentation import YEAR_SECTIONS, Percent, hierarchy, short_year_headers, with_year_change
+from XML.rules import SECTION_TITLES, YEAR_NAMES
 
 
 @dataclass(frozen=True)
@@ -91,3 +97,133 @@ def export_summation(parser: FinancialXMLParser, excel_dir: Path, prefix: str) -
     results = rules_check.check_all()
     rules_check.to_excel(str(summation_path), results)
     return SummationResult(path=summation_path, results=results)
+
+
+# Excel limits sheet names to 31 characters
+SHEET_NAMES = {
+    "introduction": "Wprowadzenie",
+    "assets": "Aktywa",
+    "passives": "Pasywa",
+    "gain_and_loses": "RZiS",
+    "change_in_capital": "Zmiany w kapitale",
+    "capital_flow": "Przepływy pieniężne",
+    "additional_info": "Podatek dochodowy",
+}
+
+
+def default_workbook_name(result: ExportResult) -> str:
+    info = result.parser.company_info()
+    name = re.sub(r'[<>:"/\\|?*]', "", info["name"]).strip() or result.xml_path.stem
+    year = info["date_to"][:4]
+    return f"{name} {year}.xlsx" if year.isdigit() else f"{name}.xlsx"
+
+
+def export_workbook(result: ExportResult, path: Path, keywords: dict, summation: SummationResult = None) -> Path:
+    """
+    One workbook with a sheet per part of the statement (positions indented by level, year-over-year change)
+    and, when the check was run, a sheet with all check results
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    info = result.parser.company_info()
+    workbook = xlsxwriter.Workbook(str(path))
+    font = {"font_name": "Arial", "font_size": 10}
+    formats = {
+        "title": workbook.add_format({**font, "bold": True, "font_size": 13}),
+        "header": workbook.add_format({**font, "bold": True, "bg_color": "#F2F2F2", "bottom": 1,
+                                       "text_wrap": True, "valign": "vcenter"}),
+        "key": workbook.add_format({**font, "font_color": "#555555"}),
+        "amount": workbook.add_format({**font, "num_format": "#,##0.00"}),
+        "amount_bold": workbook.add_format({**font, "num_format": "#,##0.00", "bold": True}),
+        "percent": workbook.add_format({**font, "num_format": "+0.0%;-0.0%;0.0%"}),
+        "text": workbook.add_format(font),
+        "ok": workbook.add_format({**font, "font_color": "#2E7D32", "bold": True}),
+        "failed": workbook.add_format({**font, "font_color": "#B02A37", "bold": True}),
+    }
+    name_formats = {}
+
+    def name_format(depth, bold):
+        if (depth, bold) not in name_formats:
+            name_formats[(depth, bold)] = workbook.add_format({**font, "indent": min(depth, 15), "bold": bold})
+        return name_formats[(depth, bold)]
+
+    title = info["name"] or result.xml_path.stem
+    details = "   ".join(part for part in [f"NIP {info['nip']}" if info["nip"] else "",
+                                          f"KRS {info['krs']}" if info["krs"] else "",
+                                          f"okres {info['date_from']} – {info['date_to']}"
+                                          if info["date_from"] else ""] if part)
+
+    for section in SECTIONS:
+        if section.key not in result.sections:
+            continue
+        _, dataframe, _ = result.sections[section.key]
+        sheet = workbook.add_worksheet(SHEET_NAMES[section.key])
+        sheet.write(0, 0, title, formats["title"])
+        sheet.write(1, 0, f"{SECTION_TITLES[section.key]}   {details}", formats["text"])
+
+        if section.key == "introduction":
+            sheet.set_column(0, 0, 45)
+            sheet.set_column(1, 1, 35)
+            sheet.set_column(2, 2, 50)
+            for row, (_, values) in enumerate(dataframe.iterrows(), start=3):
+                group, field_name, value = list(values)
+                if group:
+                    sheet.write(row, 0, group, name_format(0, True))
+                else:
+                    sheet.write(row, 1, field_name, formats["text"])
+                    sheet.write(row, 2, value, formats["text"])
+            continue
+
+        if section.key in YEAR_SECTIONS:
+            dataframe = with_year_change(dataframe.rename(
+                columns=short_year_headers(keywords, info["date_to"])))
+        columns = list(dataframe.columns)
+        headers = ["Pozycja", columns[0] or "Nazwa"] + columns[1:]
+        header_row = 3
+        for col, header in enumerate(headers):
+            sheet.write(header_row, col, header, formats["header"])
+        sheet.set_row(header_row, 30)
+        sheet.set_column(0, 0, 12)
+        sheet.set_column(1, 1, 70)
+        sheet.set_column(2, len(headers) - 1, 18)
+
+        levels = hierarchy(dataframe.index)
+        for row, (key, values) in enumerate(dataframe.iterrows(), start=header_row + 1):
+            _, depth, has_children = levels[str(key)]
+            sheet.write(row, 0, str(key) or "razem", formats["key"])
+            sheet.write(row, 1, values.iloc[0], name_format(depth, has_children))
+            for col, value in enumerate(values.iloc[1:], start=2):
+                if isinstance(value, Percent):
+                    sheet.write_number(row, col, value / 100, formats["percent"])
+                elif isinstance(value, Decimal):
+                    sheet.write_number(row, col, value, formats["amount_bold" if has_children else "amount"])
+        sheet.freeze_panes(header_row + 1, 2)
+        sheet.autofilter(header_row, 0, header_row + len(dataframe), len(headers) - 1)
+
+    if summation is not None:
+        sheet = workbook.add_worksheet("Kontrola sum")
+        sheet.write(0, 0, title, formats["title"])
+        sheet.write(1, 0, f"Kontrola sum: niezgodności {len(summation.failures)}, "
+                          f"sprawdzonych reguł {len(summation.results)}", formats["text"])
+        headers = ["Wynik", "Część", "Pozycja", "Nazwa", "Rok", "Wartość", "Oczekiwana", "Różnica", "Reguła"]
+        widths = [8, 30, 10, 50, 14, 18, 18, 16, 80]
+        for col, (header, width) in enumerate(zip(headers, widths)):
+            sheet.write(3, col, header, formats["header"])
+            sheet.set_column(col, col, width)
+        # Failed checks first
+        ordered = summation.failures + [r for r in summation.results if r.ok]
+        for row, check in enumerate(ordered, start=4):
+            sheet.write(row, 0, "OK" if check.ok else "BŁĄD", formats["ok" if check.ok else "failed"])
+            sheet.write(row, 1, SECTION_TITLES[check.section], formats["text"])
+            sheet.write(row, 2, check.index or "razem", formats["text"])
+            sheet.write(row, 3, check.label, formats["text"])
+            sheet.write(row, 4, YEAR_NAMES[check.year], formats["text"])
+            sheet.write_number(row, 5, check.actual, formats["amount"])
+            sheet.write_number(row, 6, check.expected, formats["amount"])
+            sheet.write_number(row, 7, check.difference, formats["amount"])
+            sheet.write(row, 8, check.description, formats["text"])
+        sheet.freeze_panes(4, 0)
+        sheet.autofilter(3, 0, 3 + len(ordered), len(headers) - 1)
+
+    workbook.close()
+    return path
