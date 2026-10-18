@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<JednostkaInna xmlns="http://example.invalid/JednostkaInna" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="http://example.invalid/JednostkaInna https://example.invalid/schemas/JednostkaInnaWZlotych.xsd">
+  <WprowadzenieDoSprawozdaniaFinansowego>
+    <P_1>
+      <P_1A><NazwaFirmy>Testowa Spółka Sp. z o.o.</NazwaFirmy><Siedziba>Warszawa</Siedziba></P_1A>
+    </P_1>
+    <P_3><DataOd>2022-01-01</DataOd><DataDo>2022-12-31</DataDo></P_3>
+  </WprowadzenieDoSprawozdaniaFinansowego>
+  <Bilans>
+    <Aktywa>
+      <KwotaA>150.00</KwotaA><KwotaB>100.00</KwotaB>
+      <Aktywa_A><KwotaA>100.00</KwotaA><KwotaB>60.00</KwotaB></Aktywa_A>
+      <Aktywa_B><KwotaA>50.00</KwotaA><KwotaB>40.00</KwotaB></Aktywa_B>
+    </Aktywa>
+    <Pasywa>
+      <KwotaA>150.00</KwotaA><KwotaB>100.00</KwotaB>
+      <Pasywa_A><KwotaA>120.00</KwotaA><KwotaB>80.00</KwotaB></Pasywa_A>
+      <Pasywa_B><KwotaA>30.00</KwotaA><KwotaB>20.00</KwotaB></Pasywa_B>
+    </Pasywa>
+  </Bilans>
+  <RZiS>
+    <RZiSPor>
+      <RZiSPor_A><KwotaA>500.00</KwotaA><KwotaB>400.00</KwotaB></RZiSPor_A>
+    </RZiSPor>
+  </RZiS>
+  <InformacjaDodatkowaDotyczacaPodatkuDochodowego>
+    <P_ID_1><RB>120.00</RB><RP>90.00</RP></P_ID_1>
+    <P_ID_2>
+      <Kwota>
+        <RB><KwotaA>10.00</KwotaA><KwotaB>4.00</KwotaB><KwotaC>6.00</KwotaC></RB>
+        <RP><KwotaA>8.00</KwotaA><KwotaB>3.00</KwotaB><KwotaC>5.00</KwotaC></RP>
+      </Kwota>
+    </P_ID_2>
+  </InformacjaDodatkowaDotyczacaPodatkuDochodowego>
+  <DodatkoweInformacjeIObjasnienia>
+    <Plik><Nazwa>..\..\zalacznik.pdf</Nazwa><Zawartosc>JVBERi0xLjQK</Zawartosc></Plik>
+  </DodatkoweInformacjeIObjasnienia>
+</JednostkaInna>

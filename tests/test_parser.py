@@ -82,6 +82,21 @@ def test_excel_export(statement, tmp_path):
     assert (tmp_path / "summation.xlsx").stat().st_size > 0
 
 
+def test_empty_cells_stay_none(statement):
+    # pandas 2+ turns None into NaN when rows are added one by one, which broke the summation Excel export
+    df = statement.additional_info_pd
+    header = df.loc["A"]
+    assert all(header[col] is None for col in df.columns[1:])
+    assert df.loc["B_RB"][df.columns[1]] == Decimal("10.00")
+    assert df.loc["A_RB"][df.columns[1]] == Decimal("120.00")
+
+
+def test_summation_with_tax_info_section(statement, tmp_path):
+    FinancialXMLRulesCheck(statement).to_excel(str(tmp_path / "summation.xlsx"))
+    statement.generate_additional_info_excel(str(tmp_path / "dodatkowe.xlsx"))
+    assert (tmp_path / "summation.xlsx").stat().st_size > 0
+
+
 def test_kalk_variant_drops_rzis_rules(statement):
     statement.gains_and_losses_obj.main_key = "RZiSKalk"
     rules = FinancialXMLRulesCheck(statement)

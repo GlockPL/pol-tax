@@ -32,7 +32,7 @@ def test_export_statement_writes_present_sections_only(xml_path, tmp_path):
     out_dir = tmp_path / "excel"
     result = export_statement(xml_path, Settings(), out_dir)
 
-    assert set(result.sections) == {"introduction", "assets", "passives", "gain_and_loses"}
+    assert set(result.sections) == {"introduction", "assets", "passives", "gain_and_loses", "additional_info"}
     for excel_path, _, _ in result.sections.values():
         assert excel_path.parent == out_dir
         assert excel_path.name.startswith(result.prefix)

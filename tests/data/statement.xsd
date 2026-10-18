@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:element name="Aktywa"><xsd:annotation><xsd:documentation>Aktywa razem</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="Aktywa_A"><xsd:annotation><xsd:documentation>Aktywa trwałe</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="Aktywa_B"><xsd:annotation><xsd:documentation>Aktywa obrotowe</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="Pasywa"><xsd:annotation><xsd:documentation>Pasywa razem</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="Pasywa_A"><xsd:annotation><xsd:documentation>Kapitał (fundusz) własny</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="Pasywa_B"><xsd:annotation><xsd:documentation>Zobowiązania i rezerwy na zobowiązania</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="RZiSPor"><xsd:annotation><xsd:documentation>Rachunek zysków i strat - wariant porównawczy</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="RZiSPor_A"><xsd:annotation><xsd:documentation>Przychody netto ze sprzedaży</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="WprowadzenieDoSprawozdaniaFinansowego"><xsd:annotation><xsd:documentation>Wprowadzenie do sprawozdania finansowego</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="InformacjaDodatkowaDotyczacaPodatkuDochodowego"><xsd:annotation><xsd:documentation>Rozliczenie różnicy pomiędzy podstawą opodatkowania a wynikiem brutto</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="KwotaA"><xsd:annotation><xsd:documentation>Wartość łączna</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="KwotaB"><xsd:annotation><xsd:documentation>z zysków kapitałowych</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="KwotaC"><xsd:annotation><xsd:documentation>z innych źródeł przychodów</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="P_ID_1"><xsd:annotation><xsd:documentation>A. Zysk (strata) brutto za dany rok</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="P_ID_2"><xsd:annotation><xsd:documentation>B. Przychody zwiększające podstawę opodatkowania</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="RB"><xsd:annotation><xsd:documentation>Rok bieżący</xsd:documentation></xsd:annotation></xsd:element>
+  <xsd:element name="RP"><xsd:annotation><xsd:documentation>Rok poprzedni</xsd:documentation></xsd:annotation></xsd:element>
+</xsd:schema>

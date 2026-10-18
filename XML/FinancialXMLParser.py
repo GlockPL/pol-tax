@@ -9,6 +9,7 @@ import copy
 import base64
 import logging
 import string
+import math
 
 from decimal import Decimal, InvalidOperation
 
@@ -70,6 +71,15 @@ def xml_tag_to_dict(xml_tag, xml_dict):
         xml_dict[tag] = xml_tag_to_dict(elem, xml_dict[tag])
 
     return xml_dict
+
+
+def object_dataframe(rows, columns, index=None):
+    # dtype=object keeps None as None (pandas 2+ would turn empty cells into NaN floats) and Decimals as Decimals
+    return pd.DataFrame(rows, columns=columns, index=index, dtype=object)
+
+
+def is_missing(value):
+    return value is None or (isinstance(value, float) and math.isnan(value))
 
 
 def find_first_tag(root, tag_name):
@@ -140,9 +150,8 @@ class FinancialXMLParts:
 
         cost_tags = sorted(self.cost_tag_set)
         column_names = ["key", ''] + [self.xsd_dict.get(x, x) for x in cost_tags]
-        df = pd.DataFrame(columns=column_names)
+        rows = []
 
-        row = 1
         for k, v in self.flatten_dict.items():
             if len(v) == 0:
                 continue
@@ -155,9 +164,9 @@ class FinancialXMLParts:
             key_element = key_element[1:] if len(key_element) > 0 and key_element[0] == "_" else key_element
             key_element = key_element.replace('_', '.')
 
-            df.loc[row] = [key_element, self.xsd_dict.get(k, k)] + [v.get(x) for x in cost_tags]
-            row += 1
+            rows.append([key_element, self.xsd_dict.get(k, k)] + [v.get(x) for x in cost_tags])
 
+        df = object_dataframe(rows, column_names)
         df.set_index("key", inplace=True)
         return df, border_this_list
 
@@ -183,7 +192,7 @@ class FinancialXMLParts:
             else:
                 cell_format = normal_cell_format
 
-            if row[cols[1]] is None or row[cols[2]] is None:
+            if is_missing(row[cols[1]]) or is_missing(row[cols[2]]):
                 worksheet.write(i, 0, "", cell_format)
                 worksheet.write(i, 1, "", cell_format)
                 worksheet.write(i, 2, "", cell_format)
@@ -388,10 +397,9 @@ class FinancialXMLParser:
         return out_dict
 
     def generate_introduction_pd(self):
-        df = pd.DataFrame(columns=["Col1", "Col2", "Col3"])
+        rows = []
         border_this_list = []
         flatten_introduction = self.flatten_dict(self.introduction_dict)
-        row = 0
         for k, v in flatten_introduction.items():
             try:
                 row_name = self.xsd_dict[k]
@@ -402,45 +410,37 @@ class FinancialXMLParser:
                 continue
 
             if v == "Header":
-                val = ""
-                pd_row = [row_name, "", ""]
+                rows.append([row_name, "", ""])
                 border_this_list.append(1)
             else:
-                val = v
-                pd_row = ["", row_name, val]
+                rows.append(["", row_name, v])
                 border_this_list.append(0)
 
-            df.loc[row] = pd_row
-
-            row += 1
-
-        return df, border_this_list
+        return object_dataframe(rows, ["Col1", "Col2", "Col3"]), border_this_list
 
     def generate_additional_info_pd(self):
         if self.additional_info_dict is not None:
-            df = pd.DataFrame(columns=[self.xsd_dict_orig["InformacjaDodatkowaDotyczacaPodatkuDochodowego"],
-                                       self.xsd_dict_orig[self.cost_tag_1], self.xsd_dict_orig[self.cost_tag_2],
-                                       self.xsd_dict_orig[self.cost_tag_3]])
-            row = 0
+            columns = [self.xsd_dict_orig["InformacjaDodatkowaDotyczacaPodatkuDochodowego"],
+                       self.xsd_dict_orig[self.cost_tag_1], self.xsd_dict_orig[self.cost_tag_2],
+                       self.xsd_dict_orig[self.cost_tag_3]]
+            rows = []
+            index = []
             border_list = []
             for k, v in self.additional_info_dict.items():
-                value_lst = [self.xsd_dict_orig[k], None, None, None]
                 k_index = self.xsd_dict_orig[k].split('.')[0].strip()
-                df.loc[k_index] = value_lst
+                index.append(k_index)
+                rows.append([self.xsd_dict_orig[k], None, None, None])
                 border_list.append(1)
-                row += 1
                 for kk, vv in v.items():
                     value_lst2 = [self.xsd_dict_orig[kk], None, None, None]
                     kk_index = kk.replace("_", ".")
                     for lp, (cost_k, cost_v) in enumerate(vv.items()):
                         value_lst2[lp + 1] = cost_v
-                    df.loc[f"{k_index}_{kk_index}"] = value_lst2
+                    index.append(f"{k_index}_{kk_index}")
+                    rows.append(value_lst2)
                     border_list.append(0)
-                    row += 1
 
-                row += 1
-
-            return df, border_list
+            return object_dataframe(rows, columns, index), border_list
         return None, None
 
     def generate_additional_info_excel(self, out_file_name):
@@ -664,7 +664,7 @@ class FinancialXMLRulesCheck:
             val = 0
             error = True
 
-        if val is None:
+        if is_missing(val):
             val = 0
 
         if return_error:
@@ -808,7 +808,7 @@ class FinancialXMLRulesCheck:
                     height = 20
                     cell_format = normal_cell_format
 
-                if row[cols[1]] is None:  # or row[cols[2]] is None:
+                if is_missing(row[cols[1]]):
                     worksheet.write(i, 0, "", cell_format)
                     worksheet.write(i, 1, "", cell_format)
                     worksheet.write(i, 2, "", cell_format)
@@ -824,7 +824,7 @@ class FinancialXMLRulesCheck:
                         cell_data = row[cols[c]]
                         if type(cell_data) == Decimal:
                             worksheet.write_number(i, c, cell_data, number_format)
-                        else:
+                        elif not is_missing(cell_data):
                             worksheet.write(i, c, cell_data)
                     char_line_limit = 75
                     wrap_text_count = len(first_cell_text)
