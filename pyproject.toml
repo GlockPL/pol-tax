@@ -1,6 +1,6 @@
 [project]
 name = "pol-tax"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desktop viewer and Excel exporter for Polish e-financial statements (e-Sprawozdania finansowe) filed with the KRS"
 readme = "README.md"
 requires-python = ">=3.12"
